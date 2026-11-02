@@ -10,7 +10,7 @@ Private, read-only Obsidian integration with one GitHub login, a configuration G
 - One MCP endpoint, `/mcp`. Client tokens select the permitted vaults; new shares require no new OAuth App.
 - A GUI for adding, removing and retargeting vault shares. Workers mount only their selected directory, read-only.
 - A Pangolin-aware STDIO bridge. It sends both Pangolin access-token headers before the request reaches Pangolin and supplies an independently scoped app token.
-- Private prebuilt GHCR images. Server updates pull images; no local Python/Docker rebuild is required.
+- Private prebuilt GHCR app and gateway images. Server updates pull images; no local Python/Docker rebuild is required.
 - Locked dependency hashes, pinned Actions/base images, tests and regular security scans.
 
 The app never configures Pangolin or starts Docker containers itself. Saving generates a local Compose override; apply it from Dockge. The app has no Docker socket.
@@ -78,7 +78,9 @@ git pull --ff-only && sudo docker compose pull && sudo docker compose up -d --re
 
 There is no `build:` in production Compose. Runtime data, `.env` and generated overrides are untracked and must be preserved. Scheduled scans do not silently deploy or merge updates. Dependabot creates reviewable proposals; after dependency changes regenerate and review both hash lockfiles.
 
-The `stable` tag is an update channel. For a fixed installation or rollback, put a successful immutable `sha-...-run-...` tag or image digest into `MCP_IMAGE`. Back up state and test the restore procedure before a production migration. No actual TrueNAS backup/restore has been performed by this implementation.
+Both private packages, `obsidian-mcp` and `obsidian-mcp-gateway`, must be readable by the pulling client. The gateway applies Alpine package updates to its pinned Nginx base at build time, and CI scans the resulting image before publication. These OS updates follow the Alpine repositories rather than a frozen package mirror; the immutable published image is the deployment artifact.
+
+The `stable` tag is an update channel. For a fixed installation or rollback, put a successful immutable `sha-...-run-...` tag or image digest into `MCP_IMAGE` and the matching successful gateway tag into `MCP_GATEWAY_IMAGE`. Back up state and test the restore procedure before a production migration. No actual TrueNAS backup/restore has been performed by this implementation.
 
 See [the migration guide](docs/MIGRATION.md) for existing version-1 stacks.
 

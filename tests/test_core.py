@@ -98,6 +98,14 @@ class ConfigurationAndTokenTests(Fixture):
             self.assertNotIn("build", service)
             self.assertNotIn("GITHUB_CLIENT_SECRET", service["environment"])
 
+    def test_literal_dollar_path_cannot_expand_compose_environment(self):
+        raw = "/srv/obsidian/vaults/${OTHER_ROOT}/$campaign"
+        vault = self.save_vaults([{"name": "llm", "label": "Literal path", "directory": raw}])[0]
+        deployment = json.loads(self.settings.override_file.read_text().split("\n", 1)[1])
+        self.assertEqual(vault["directory"], raw)
+        self.assertEqual(deployment["services"]["vault-llm"]["volumes"][0]["source"],
+                         "/srv/obsidian/vaults/$${OTHER_ROOT}/$$campaign")
+
     def test_invalid_names_duplicate_directories_and_outside_paths_rejected(self):
         for name, path in (("../escape", "/srv/obsidian/vaults/a"), ("UPPER", "/srv/obsidian/vaults/a"),
                            ("valid", "/etc"), ("valid", "/srv/obsidian/vaults"),

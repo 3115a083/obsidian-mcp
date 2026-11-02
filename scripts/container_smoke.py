@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import secrets
-import re
 import subprocess
 import tempfile
 import time
@@ -35,14 +34,14 @@ def main():
             # Ephemeral synthetic CI file, shared with non-root test container only.
             override.chmod(0o666)
             app_env = root / "app.env"
-            app_env.write_text("PUBLIC_URL=https://obsidian.test\nGITHUB_CLIENT_ID=synthetic-ci-client\nGITHUB_CLIENT_SECRET=synthetic-ci-secret\nGITHUB_OWNER_ID=12345\nVAULT_PARENT=/srv/obsidian/vaults\n")
+            app_env.write_text("MCP_IMAGE=obsidian-mcp-ci:test\nMCP_GATEWAY_IMAGE=obsidian-mcp-gateway-ci:test\nPUBLIC_URL=https://obsidian.test\nGITHUB_CLIENT_ID=synthetic-ci-client\nGITHUB_CLIENT_SECRET=synthetic-ci-secret\nGITHUB_OWNER_ID=12345\nVAULT_PARENT=/srv/obsidian/vaults\n")
             app_env.chmod(0o600)
             docker("run", "-d", "--name", app, "--network", network, "--network-alias", "app", "--read-only", "--cap-drop", "ALL",
                    "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "--security-opt", "no-new-privileges:true",
                    "--env-file", str(app_env), "--mount", f"type=volume,source={volume},target=/data",
                    "--mount", f"type=bind,source={override},target=/deployment/compose.override.yaml", IMAGE)
             repo = Path(__file__).resolve().parents[1]
-            nginx_image = re.search(r"image: (nginx:[^\s]+)", (repo / "compose.yaml").read_text()).group(1)
+            nginx_image = "obsidian-mcp-gateway-ci:test"
             docker("run", "-d", "--name", gateway, "--network", network, "--read-only", "--user", "568:568", "--cap-drop", "ALL",
                    "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "-p", "127.0.0.1::8080", "--entrypoint", "nginx",
                    "--mount", f"type=bind,source={repo / 'nginx.conf'},target=/etc/nginx/nginx.conf,readonly",
@@ -82,12 +81,16 @@ from pathlib import Path
 from state import State
 from deployment import write_override
 s=State('/data')
-c=s.prepare_vaults([{'name':'llm','label':'Synthetic memory','directory':'/srv/obsidian/vaults/LLMs'}],Path('/srv/obsidian/vaults'))
+c=s.prepare_vaults([{'name':'llm','label':'Synthetic memory','directory':'/srv/obsidian/vaults/${OTHER_ROOT}/$campaign'}],Path('/srv/obsidian/vaults'))
 s.save_config(c,0,lambda data,revision:write_override(Path('/deployment/compose.override.yaml'),data,s,revision))
 t,i=s.issue_client('Synthetic CI',[c['vaults'][0]['id']],1)
 print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['id'])}))
 """
             credentials = json.loads(docker("exec", app, "python", "-c", code))
+            # Validate the generated file through real Compose interpolation.
+            rendered = json.loads(docker("compose", "--env-file", str(app_env), "-f", str(repo / "compose.yaml"),
+                                         "-f", str(override), "config", "--format", "json"))
+            assert rendered["services"]["vault-llm"]["volumes"][0]["source"] == "/srv/obsidian/vaults/${OTHER_ROOT}/$campaign"
             worker_env = root / "worker.env"
             worker_env.write_text("WORKER_TOKEN=" + credentials["worker"] + "\nVAULT_ROOT=/vault\n")
             worker_env.chmod(0o600)
