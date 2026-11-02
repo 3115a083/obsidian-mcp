@@ -138,3 +138,32 @@ jobs:
           docker tag "$PUBLISH_IMAGE:$PUBLISH_TAG" "$PUBLISH_IMAGE:stable"
           docker push "$PUBLISH_IMAGE:stable"
           docker logout ghcr.io
+
+  published-images:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [obsidian-mcp, obsidian-mcp-gateway]
+    steps:
+      - name: Authenticate read-only access to the published private image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Scan the published stable image, not just a fresh rebuild
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          image-ref: ghcr.io/3115a083/${{ matrix.package }}:stable
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Remove temporary registry authentication
+        if: always()
+        run: docker logout ghcr.io

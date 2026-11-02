@@ -90,7 +90,9 @@ print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['i
             # Validate the generated file through real Compose interpolation.
             rendered = json.loads(docker("compose", "--env-file", str(app_env), "-f", str(repo / "compose.yaml"),
                                          "-f", str(override), "config", "--format", "json"))
-            assert rendered["services"]["vault-llm"]["volumes"][0]["source"] == "/srv/obsidian/vaults/${OTHER_ROOT}/$campaign"
+            # Canonical config output may re-escape dollars for re-reading.
+            source = rendered["services"]["vault-llm"]["volumes"][0]["source"]
+            assert source.replace("$$", "$") == "/srv/obsidian/vaults/${OTHER_ROOT}/$campaign", repr(source)
             worker_env = root / "worker.env"
             worker_env.write_text("WORKER_TOKEN=" + credentials["worker"] + "\nVAULT_ROOT=/vault\n")
             worker_env.chmod(0o600)
