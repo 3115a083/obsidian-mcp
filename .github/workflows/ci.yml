@@ -1,0 +1,169 @@
+name: Validate and scan
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --require-hashes -r requirements-dev.txt
+      - run: python scripts/check_workflows.py
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - run: python -m bandit -q app.py auth.py bridge.py deployment.py settings.py state.py ui.py vault.py web.py worker.py
+      - name: Dependency audit, runtime and test tools
+        run: |
+          python -m pip_audit -r requirements.txt --require-hashes --disable-pip
+          python -m pip_audit -r requirements-dev.txt --require-hashes --disable-pip
+
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --require-hashes -r requirements-dev.txt
+      - run: python -m playwright install --with-deps --only-shell chromium
+      - name: Real Chromium login, cookies and CSRF
+        run: python -m unittest tests.test_browser -v
+        env:
+          RUN_BROWSER_TESTS: '1'
+
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build exact source with locked dependencies
+        run: |
+          docker build --pull --target app --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag obsidian-mcp-ci:test .
+          docker build --pull --target gateway --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag obsidian-mcp-gateway-ci:test .
+      - name: Container integration and read-only mounts
+        run: python3 scripts/container_smoke.py
+      - name: Application image vulnerabilities and secrets
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          image-ref: obsidian-mcp-ci:test
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Gateway image vulnerabilities
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          image-ref: obsidian-mcp-gateway-ci:test
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Repository secret scan
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          exit-code: '1'
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, browser, containers]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [app, gateway]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build immutable run-tagged image
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [ "$BUILD_TARGET" = gateway ]; then image="$image-gateway"; fi
+          tag="sha-${GITHUB_SHA}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker build --target "$BUILD_TARGET" --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag "$image:$tag" .
+          printf 'PUBLISH_IMAGE=%s\nPUBLISH_TAG=%s\n' "$image" "$tag" >> "$GITHUB_ENV"
+      - name: Scan the actual image that will be published
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          image-ref: ${{ env.PUBLISH_IMAGE }}:${{ env.PUBLISH_TAG }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Publish to private registry after all checks
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$PUBLISH_IMAGE:$PUBLISH_TAG"
+          docker tag "$PUBLISH_IMAGE:$PUBLISH_TAG" "$PUBLISH_IMAGE:stable"
+          docker push "$PUBLISH_IMAGE:stable"
+          docker logout ghcr.io
+
+  published-images:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [obsidian-mcp, obsidian-mcp-gateway]
+    steps:
+      - name: Authenticate read-only access to the published private image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Scan the published stable image, not just a fresh rebuild
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          version: v0.69.3
+          image-ref: ghcr.io/3115a083/${{ matrix.package }}:stable
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Remove temporary registry authentication
+        if: always()
+        run: docker logout ghcr.io
