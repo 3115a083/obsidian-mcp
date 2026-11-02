@@ -1,0 +1,8 @@
+* @3115a083
+/.github/ @3115a083
+/Dockerfile @3115a083
+/requirements* @3115a083
+/auth.py @3115a083
+/bridge.py @3115a083
+/state.py @3115a083
+/compose*.yaml @3115a083

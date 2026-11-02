@@ -1,0 +1,60 @@
+name: obsidian-mcp
+
+services:
+  app:
+    image: ${MCP_IMAGE:?Set MCP_IMAGE}
+    user: ${MCP_UID:-568}:${MCP_GID:-568}
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?Set GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET}
+      GITHUB_OWNER_ID: ${GITHUB_OWNER_ID:?Set GITHUB_OWNER_ID}
+      VAULT_PARENT: ${VAULT_PARENT:?Set VAULT_PARENT}
+      DATA_DIR: /data
+      COMPOSE_OVERRIDE: /deployment/compose.override.yaml
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./compose.override.yaml
+        target: /deployment/compose.override.yaml
+        bind:
+          create_host_path: false
+    networks: [front, backplane]
+    read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,size=32m]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    restart: unless-stopped
+  gateway:
+    image: ${MCP_GATEWAY_IMAGE:?Set MCP_GATEWAY_IMAGE}
+    user: ${MCP_UID:-568}:${MCP_GID:-568}
+    entrypoint: [nginx, -c, /etc/nginx/nginx.conf, -g, 'daemon off;']
+    depends_on: [app]
+    ports:
+      - ${MCP_BIND_IP:-127.0.0.1}:${MCP_GATEWAY_PORT:-3061}:8080
+    volumes:
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [front]
+    read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,size=32m]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 128m
+    restart: unless-stopped
+
+networks:
+  front: {}
+  backplane:
+    internal: true
