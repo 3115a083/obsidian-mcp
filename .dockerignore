@@ -1,0 +1,13 @@
+*
+!Dockerfile
+!requirements.txt
+!app.py
+!auth.py
+!bridge.py
+!deployment.py
+!settings.py
+!state.py
+!ui.py
+!vault.py
+!web.py
+!worker.py

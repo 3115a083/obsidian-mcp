@@ -1,0 +1,3 @@
+# Copy once to compose.override.yaml. The GUI writes this local override.
+# Its generated worker credentials must never be committed.
+services: {}
