@@ -73,9 +73,19 @@ class RealBrowserTests(unittest.TestCase):
                 page.on("pageerror", lambda error: failures.append(str(error)))
 
                 def fake_github(route):
-                    values = parse_qs(urlsplit(route.request.url).query)
-                    route.fulfill(status=302, headers={"Location": self.origin + "/auth/callback?" + urlencode({"code": "synthetic-code", "state": values["state"][0]})})
-                page.route("https://github.com/login/oauth/authorize**", fake_github)
+                    # Chromium routing does not re-intercept a redirect chain.
+                    # Fetch the real local login endpoint, preserve its signed
+                    # session cookie, then replace only the provider's browser hop.
+                    upstream = route.fetch(max_redirects=0)
+                    destination = urlsplit(upstream.headers["location"])
+                    self.assertEqual(destination.netloc, "github.com")
+                    self.assertEqual(destination.path, "/login/oauth/authorize")
+                    values = parse_qs(destination.query)
+                    self.assertEqual(values["code_challenge_method"], ["S256"])
+                    headers = dict(upstream.headers)
+                    headers["location"] = self.origin + "/auth/callback?" + urlencode({"code": "synthetic-code", "state": values["state"][0]})
+                    route.fulfill(response=upstream, headers=headers)
+                page.route(self.origin + "/auth/login", fake_github)
                 page.goto(self.origin + "/login")
                 page.get_by_role("link", name="Mit GitHub fortfahren").click()
                 page.wait_for_url(self.origin + "/admin/")
