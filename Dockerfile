@@ -1,4 +1,4 @@
-FROM python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
+FROM python:3.12-alpine@sha256:e6dae589c1c05976188fd3bd019afd091445fc533ed2ea29001beddc7368a9c8
 ARG BUILD_REVISION=development
 LABEL org.opencontainers.image.source="https://github.com/3115a083/obsidian-mcp" \
       org.opencontainers.image.version="2.0.0" \
