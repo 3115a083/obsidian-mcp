@@ -32,7 +32,7 @@ services:
     mem_limit: 512m
     restart: unless-stopped
   gateway:
-    image: nginx:stable-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949
+    image: nginx:alpine@sha256:785835ea65db4bba6f021acc0f3be91b0fef76a53fe41f8588c6698d2aed0606
     user: ${MCP_UID:-568}:${MCP_GID:-568}
     entrypoint: [nginx, -c, /etc/nginx/nginx.conf, -g, 'daemon off;']
     depends_on: [app]

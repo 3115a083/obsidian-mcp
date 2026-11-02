@@ -23,7 +23,7 @@ The app never configures Pangolin or starts Docker containers itself. Saving gen
 4. Create **one GitHub OAuth App**. Register these callback URLs on the same App:
    - `https://YOUR_HOST/auth/callback` for browser login.
    - `https://YOUR_HOST/auth/mcp/callback` for clients using central MCP OAuth.
-   Enter its Client ID and Client Secret in Dockge's `.env`. No GitHub repository or profile-write scopes are requested. Device Flow is not needed.
+   Register both as exact callback URLs with wildcard matching disabled. GitHub supports [multiple OAuth App callbacks](https://github.blog/changelog/2026-08-14-multiple-redirect-uris-and-token-refresh-for-oauth-apps/). Enter its Client ID and Client Secret in Dockge's `.env`. No GitHub repository or profile-write scopes are requested. Device Flow is not needed.
 5. Prepare the private state folder and initially empty Compose override once:
 
    ```bash
