@@ -59,7 +59,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Build exact source with locked dependencies
-        run: docker build --pull --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag obsidian-mcp-ci:test .
+        run: |
+          docker build --pull --target app --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag obsidian-mcp-ci:test .
+          docker build --pull --target gateway --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag obsidian-mcp-gateway-ci:test .
       - name: Container integration and read-only mounts
         run: python3 scripts/container_smoke.py
       - name: Application image vulnerabilities and secrets
@@ -76,8 +78,8 @@ jobs:
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           version: v0.69.3
-          image-ref: nginx:alpine@sha256:785835ea65db4bba6f021acc0f3be91b0fef76a53fe41f8588c6698d2aed0606
-          scanners: vuln
+          image-ref: obsidian-mcp-gateway-ci:test
+          scanners: vuln,secret
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: false
@@ -94,6 +96,10 @@ jobs:
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [verify, browser, containers]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [app, gateway]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -104,11 +110,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Build immutable run-tagged image
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
         shell: bash
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [ "$BUILD_TARGET" = gateway ]; then image="$image-gateway"; fi
           tag="sha-${GITHUB_SHA}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          docker build --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag "$image:$tag" .
+          docker build --target "$BUILD_TARGET" --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag "$image:$tag" .
           printf 'PUBLISH_IMAGE=%s\nPUBLISH_TAG=%s\n' "$image" "$tag" >> "$GITHUB_ENV"
       - name: Scan the actual image that will be published
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0

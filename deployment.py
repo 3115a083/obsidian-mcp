@@ -13,7 +13,7 @@ def compose_override(config, state, revision):
             "user": "${MCP_UID:-568}:${MCP_GID:-568}",
             "command": ["uvicorn", "worker:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers"],  # nosec B104 # Private internal Docker network; no published worker ports; deployment tests enforce this.
             "environment": {"WORKER_TOKEN": state.derive("worker:" + vault["id"]), "VAULT_ROOT": "/vault", "HOME": "/tmp"},  # nosec B108 # HOME is a per-container tmpfs, not a predictable temporary file.
-            "volumes": [{"type": "bind", "source": vault["directory"], "target": "/vault", "read_only": True,
+            "volumes": [{"type": "bind", "source": vault["directory"].replace("$", "$$"), "target": "/vault", "read_only": True,
                          "bind": {"create_host_path": False}}],
             "networks": ["backplane"], "read_only": True,
             "tmpfs": ["/tmp:rw,noexec,nosuid,size=32m"], "cap_drop": ["ALL"],  # nosec B108 # Declares the isolated tmpfs mount itself; no host temp-file API.
@@ -21,7 +21,7 @@ def compose_override(config, state, revision):
             "mem_limit": "256m", "cpus": 1.0, "restart": "unless-stopped",
             "labels": {"obsidian-mcp.vault-id": vault["id"]},
         }
-    # JSON is valid YAML. No credential or path is interpreted as YAML code.
+    # JSON is valid YAML. Escape literal path dollars for Compose interpolation.
     return "# Generated locally; contains worker credentials. Never commit. Revision " + str(revision) + "\n" + json.dumps({"services": services}, ensure_ascii=False, indent=2) + "\n"
 
 
