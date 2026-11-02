@@ -76,7 +76,7 @@ For image-only updates, use Dockge's authenticated image pull and deploy. For ch
 git pull --ff-only && sudo docker compose pull && sudo docker compose up -d --remove-orphans
 ```
 
-There is no `build:` in production Compose. Runtime data, `.env` and generated overrides are untracked and must be preserved. Scheduled scans do not silently deploy or merge updates. Dependabot creates reviewable proposals; after dependency changes regenerate and review both hash lockfiles.
+There is no `build:` in production Compose. Runtime data, `.env` and generated overrides are untracked and must be preserved. Weekly and manually dispatched runs also scan both already-published private `stable` images, so a clean rebuilt candidate does not hide vulnerable installed releases. Scheduled scans do not silently deploy or merge updates. Dependabot creates reviewable proposals; after dependency changes regenerate and review both hash lockfiles.
 
 Both private packages, `obsidian-mcp` and `obsidian-mcp-gateway`, must be readable by the pulling client. The gateway applies Alpine package updates to its pinned Nginx base at build time, and CI scans the resulting image before publication. These OS updates follow the Alpine repositories rather than a frozen package mirror; the immutable published image is the deployment artifact.
 

@@ -21,7 +21,7 @@ Revoke an individual app capability in the GUI and its Pangolin credential in Pa
 
 ## Automated checks
 
-CI proposes unit and real-browser tests, a real Docker/worker/Nginx test, pip-audit, Bandit, image vulnerability scans and secret scans. The weekly schedule rescans the current main branch. Files alone do not prove successful runs. Dependabot proposes reviewed dependency and Action updates; hash locks must be regenerated and checked when needed.
+CI proposes unit and real-browser tests, a real Docker/worker/Nginx test, pip-audit, Bandit, image vulnerability scans and secret scans. The weekly schedule rescans current main, rebuilds candidate images, and separately checks both published private stable images with read-only registry permissions. A passing rebuilt gateway is not evidence that an older deployed image is patched. Files alone do not prove successful runs. Dependabot proposes reviewed dependency and Action updates; hash locks must be regenerated and checked when needed.
 
 Four precise Bandit heuristic dispositions are documented inline, not global rule exclusions: the internal worker's listener, its isolated tmpfs/HOME declarations, and the public OAuth endpoint/auth-method identifier. None is an embedded credential or a host temporary-file operation. Deployment tests enforce that workers publish no ports. Changes to these boundaries require fresh review; do not add blanket suppressions.
 
