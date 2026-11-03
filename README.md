@@ -100,3 +100,12 @@ Visible UTF-8 Markdown only. Hidden paths, symlinks, special files, binary attac
 LoreMonkey transcripts can be imported as Markdown into a permitted campaign vault. The actual PC-to-server transfer is separate. Selected text is sent to OpenAI when used through ChatGPT. Recording and processing must be agreed with the group. An external memory vault is read on relevant requests; it does not automatically load every note into every chat.
 
 Read [SECURITY.md](SECURITY.md) for boundaries, precise static-analysis dispositions, revocation and unverified repository controls. Internal development records and operator-specific configuration must stay outside this public repository.
+
+
+## Sharing the images
+
+Sharing an image permits others to run their own instances; it does not share your running vaults. Supply credentials and directory mounts locally, never as Docker build arguments or committed files. Keep the owner allowlist and Pangolin protection active.
+
+Public package visibility is an administrator action independent from a repository merge. GHCR offers no reliable public-but-unlisted mode. The GitHub account and OCI source/revision labels identify this distribution. The gateway's noindex header covers only responses it serves, not registry or GitHub search results.
+
+CI checks the exact images' metadata and every layer for runtime material before publication, in addition to Trivy. Use the verified final artifact and preserve its digest when a fixed deployment is needed.

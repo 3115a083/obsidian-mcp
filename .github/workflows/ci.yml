@@ -101,6 +101,10 @@ jobs:
         run: |
           docker build --pull --target app --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag obsidian-mcp-ci:test .
           docker build --pull --target gateway --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag obsidian-mcp-gateway-ci:test .
+      - name: Inspect image metadata and every saved layer for runtime material
+        run: |
+          python3 scripts/check_image_boundary.py obsidian-mcp-ci:test
+          python3 scripts/check_image_boundary.py obsidian-mcp-gateway-ci:test
       - name: Container integration and read-only mounts
         run: python3 scripts/container_smoke.py
       - name: Application image vulnerabilities and secrets
@@ -158,6 +162,8 @@ jobs:
           tag="sha-${GITHUB_SHA}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker build --target "$BUILD_TARGET" --build-arg "BUILD_REVISION=$GITHUB_SHA" --tag "$image:$tag" .
           printf 'PUBLISH_IMAGE=%s\nPUBLISH_TAG=%s\n' "$image" "$tag" >> "$GITHUB_ENV"
+      - name: Inspect the exact image metadata and all layers before publication
+        run: python3 scripts/check_image_boundary.py "$PUBLISH_IMAGE:$PUBLISH_TAG"
       - name: Scan the actual image that will be published
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
