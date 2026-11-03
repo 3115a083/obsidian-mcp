@@ -15,6 +15,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  codeql:
+    name: codeql
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
+        with:
+          languages: python
+          build-mode: none
+      - uses: github/codeql-action/analyze@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
+        with:
+          category: /language:python
+
   history-secrets:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -115,7 +134,7 @@ jobs:
 
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [verify, browser, containers, history-secrets]
+    needs: [verify, browser, containers, history-secrets, codeql]
     strategy:
       fail-fast: false
       matrix:

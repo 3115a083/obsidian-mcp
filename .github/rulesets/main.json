@@ -1,5 +1,5 @@
 {
-  "name": "Protect main",
+  "name": "Require main CI checks",
   "target": "branch",
   "enforcement": "active",
   "bypass_actors": [],
@@ -47,6 +47,10 @@
           },
           {
             "context": "history-secrets",
+            "integration_id": 15368
+          },
+          {
+            "context": "codeql",
             "integration_id": 15368
           }
         ]
