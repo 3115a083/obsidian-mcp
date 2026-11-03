@@ -58,6 +58,8 @@ def main():
                 req = urllib.request.Request(endpoint + path, data=json.dumps(data).encode() if data is not None else None, headers=headers)
                 try:
                     with urllib.request.urlopen(req, timeout=3) as response:
+                        if path == "/healthz":
+                            assert response.headers.get("X-Robots-Tag") == "noindex, nofollow, noarchive"
                         return response.status, response.read()
                 except urllib.error.HTTPError as error:
                     return error.code, error.read()
@@ -90,6 +92,13 @@ print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['i
             # Validate the generated file through real Compose interpolation.
             rendered = json.loads(docker("compose", "--env-file", str(app_env), "-f", str(repo / "compose.yaml"),
                                          "-f", str(override), "config", "--format", "json"))
+            # Check actual Compose parsing, including the comma-containing tmpfs
+            # option. An unquoted flow list silently splits it into four mounts.
+            for service_name in ("app", "gateway", "vault-llm"):
+                service = rendered["services"][service_name]
+                assert service["tmpfs"] == ["/tmp:rw,noexec,nosuid,size=32m"], service_name
+                assert service["read_only"] is True, service_name
+                assert service["cap_drop"] == ["ALL"], service_name
             # Canonical config output may re-escape dollars for re-reading.
             source = rendered["services"]["vault-llm"]["volumes"][0]["source"]
             assert source.replace("$$", "$") == "/srv/obsidian/vaults/${OTHER_ROOT}/$campaign", repr(source)
