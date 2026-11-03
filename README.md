@@ -100,12 +100,3 @@ Visible UTF-8 Markdown only. Hidden paths, symlinks, special files, binary attac
 LoreMonkey transcripts can be imported as Markdown into a permitted campaign vault. The actual PC-to-server transfer is separate. Selected text is sent to OpenAI when used through ChatGPT. Recording and processing must be agreed with the group. An external memory vault is read on relevant requests; it does not automatically load every note into every chat.
 
 Read [SECURITY.md](SECURITY.md) for boundaries, precise static-analysis dispositions, revocation and unverified repository controls. Internal development records and operator-specific configuration must stay outside this public repository.
-
-
-## Public repository safeguards
-
-CI runs pinned CodeQL Python analysis and Gitleaks across reachable Git history in addition to file/image scans. The branch-ruleset template at [.github/rulesets/main.json](.github/rulesets/main.json) requires pull requests, up-to-date checks from GitHub Actions, resolved review threads, and blocks force pushes/deletion without bypass actors. Importing and activating it as an additional ruleset is a separate administrator action; committing the JSON does not enforce it. Preserve the existing Main ruleset, including CODEOWNERS and CodeQL requirements.
-
-For an owner-only repository, the template requires zero independent approvals so it does not lock the sole owner out. Human review is still required by this project's process. Add a trusted independent reviewer before raising the enforced approval count. No existing stricter protection should be removed.
-
-Repository administrators should enable secret scanning and push protection, dependency alerts and security updates, read-only default workflow permissions, and approval for all external fork contributors. Do not allow Actions to approve pull requests. GitHub settings must be verified in the administration interface; these documentation statements do not establish active settings.
