@@ -25,7 +25,8 @@ services:
           create_host_path: false
     networks: [front, backplane]
     read_only: true
-    tmpfs: [/tmp:rw,noexec,nosuid,size=32m]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 128
@@ -47,7 +48,8 @@ services:
           create_host_path: false
     networks: [front]
     read_only: true
-    tmpfs: [/tmp:rw,noexec,nosuid,size=32m]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 64

@@ -36,3 +36,13 @@ The public source contains generic deployment examples. Public GitHub source and
 Report suspected credentials privately. If any real credential was published in Git history or an image, revoke/rotate it at its issuer; removing a line or making a repository private does not revoke a leaked credential. A clean scanner result covers recognized patterns and is not proof that all sensitive data is absent.
 
 No production migration or live Pangolin/GitHub/OpenAI-tunnel verification is asserted by this file.
+
+## Image publication and identity
+
+Public images are downloadable software, not access grants to any running instance. The owner allowlist, scoped app tokens, Pangolin authentication and read-only mounts remain required. Each operator supplies their own credentials and vault mounts at runtime.
+
+Image boundary checks inspect metadata and every saved layer, including files deleted by later layers, for baked-in credential variables, runtime state and unexpected application files. Trivy additionally scans the actual publish artifact for recognized secrets and HIGH/CRITICAL vulnerabilities. These checks complement review of the Dockerfile and its build-context allowlist; they do not prove absence of every possible identifying datum.
+
+The repository owner, GitHub noreply commit identities, commit timestamps, package paths and OCI source/revision labels are public identifiers. This distribution is not anonymous. Container registries do not provide a reliable unlisted/search-exclusion mode for public packages. Public copies and indexing cannot be revoked.
+
+The gateway sends X-Robots-Tag: noindex, nofollow, noarchive for its own HTTP responses. This is a voluntary crawler directive for the running service, not access control, and does not control indexing on GitHub, GHCR or the upstream Pangolin login page.
