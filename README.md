@@ -109,3 +109,12 @@ CI runs pinned CodeQL Python analysis and Gitleaks across reachable Git history 
 For an owner-only repository, the template requires zero independent approvals so it does not lock the sole owner out. Human review is still required by this project's process. Add a trusted independent reviewer before raising the enforced approval count. No existing stricter protection should be removed.
 
 Repository administrators should enable secret scanning and push protection, dependency alerts and security updates, read-only default workflow permissions, and approval for all external fork contributors. Do not allow Actions to approve pull requests. GitHub settings must be verified in the administration interface; these documentation statements do not establish active settings.
+
+
+## Sharing the images
+
+Sharing an image permits others to run their own instances; it does not share your running vaults. Supply credentials and directory mounts locally, never as Docker build arguments or committed files. Keep the owner allowlist and Pangolin protection active.
+
+Public package visibility is an administrator action independent from a repository merge. GHCR offers no reliable public-but-unlisted mode. The GitHub account and OCI source/revision labels identify this distribution. The gateway's noindex header covers only responses it serves, not registry or GitHub search results.
+
+CI checks the exact images' metadata and every layer for runtime material before publication, in addition to Trivy. Use the verified final artifact and preserve its digest when a fixed deployment is needed.
