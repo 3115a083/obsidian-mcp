@@ -2,7 +2,7 @@
 
 Private, read-only Obsidian integration with one GitHub login, a configuration GUI and separate vault workers. Built for a Linux Docker host such as TrueNAS with Newt in host networking.
 
-**Version 2.0.0 is proposed in a pull request. Images exist only after the reviewed main-branch pipeline has successfully published them.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
+**Version 2.0.0 is released. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
 
 ## What changes in version 2
 
@@ -17,8 +17,8 @@ The app never configures Pangolin or starts Docker containers itself. Saving gen
 
 ## First installation
 
-1. Keep this repository private. Review and merge the implementation PR after CI and owner review. Wait for successful image publication.
-2. Put the deployment files on the Docker host, preferably through a read-only Git deploy key scoped to this repository. No token belongs in a clone URL. A private Git checkout is supported; runtime images come from GHCR.
+1. Review the source and select a successfully published image tag. Public source does not make a running vault public. Keep Pangolin authentication and application authorization enabled.
+2. Clone this public repository onto the Docker host over HTTPS. No Git credential is needed to read it. Runtime image visibility is configured independently in GHCR; public source does not grant permission to pull a private package.
 3. Copy `.env.example` to a local `.env` in Dockge. Set the real HTTPS `PUBLIC_URL`, the numeric `GITHUB_OWNER_ID`, and your host's `VAULT_PARENT`. Supply credentials locally, never in Git or chat.
 4. Create **one GitHub OAuth App**. Register these callback URLs on the same App:
    - `https://YOUR_HOST/auth/callback` for browser login.
@@ -99,4 +99,13 @@ Visible UTF-8 Markdown only. Hidden paths, symlinks, special files, binary attac
 
 LoreMonkey transcripts can be imported as Markdown into a permitted campaign vault. The actual PC-to-server transfer is separate. Selected text is sent to OpenAI when used through ChatGPT. Recording and processing must be agreed with the group. An external memory vault is read on relevant requests; it does not automatically load every note into every chat.
 
-Read [SECURITY.md](SECURITY.md) for boundaries, precise static-analysis dispositions, revocation and unverified repository controls. Canonical private development decisions and errors live in the owner's `promptguides` project file.
+Read [SECURITY.md](SECURITY.md) for boundaries, precise static-analysis dispositions, revocation and unverified repository controls. Internal development records and operator-specific configuration must stay outside this public repository.
+
+
+## Public repository safeguards
+
+CI runs Gitleaks across reachable Git history in addition to file/image scans. The branch-ruleset template at [.github/rulesets/main.json](.github/rulesets/main.json) requires pull requests, up-to-date checks from GitHub Actions, resolved review threads, and blocks force pushes/deletion without bypass actors. Importing and activating it is a separate administrator action; committing the JSON does not enforce it.
+
+For an owner-only repository, the template requires zero independent approvals so it does not lock the sole owner out. Human review is still required by this project's process. Add a trusted independent reviewer before raising the enforced approval count. No existing stricter protection should be removed.
+
+Repository administrators should enable secret scanning and push protection, dependency alerts and security updates, read-only default workflow permissions, and approval for all external fork contributors. Do not allow Actions to approve pull requests. GitHub settings must be verified in the administration interface; these documentation statements do not establish active settings.

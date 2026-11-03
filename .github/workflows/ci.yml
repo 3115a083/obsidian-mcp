@@ -15,6 +15,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  history-secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify pinned Gitleaks and scan reachable Git history
+        shell: bash
+        run: |
+          install_dir="$RUNNER_TEMP/obsidian-gitleaks"
+          mkdir -p "$install_dir"
+          curl --fail --location --retry 2 --output "$install_dir/release.tgz" https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          printf '%s  %s\n' 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb "$install_dir/release.tgz" | sha256sum --check --strict
+          tar --extract --gzip --file "$install_dir/release.tgz" --directory "$install_dir" --no-same-owner gitleaks
+          "$install_dir/gitleaks" git --no-banner --redact=100 --log-opts="--all" .
+
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -95,7 +115,7 @@ jobs:
 
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [verify, browser, containers]
+    needs: [verify, browser, containers, history-secrets]
     strategy:
       fail-fast: false
       matrix:
