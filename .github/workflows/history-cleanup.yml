@@ -1,0 +1,38 @@
+name: One-time reviewed history cleanup
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Apply the owner-approved, separately reviewed history cleanup
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: one-time-reviewed-history-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    if: github.actor_id == github.repository_owner_id && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install checksum-pinned history tool
+        run: |
+          python -m venv "$RUNNER_TEMP/history-tools"
+          printf '%s\n' 'git-filter-repo==2.47.0 --hash=sha256:2cd04929b9024e83e65db571cbe36aec65ead0cb5f9ec5abe42158654af5ad83' > "$RUNNER_TEMP/history-requirements.txt"
+          "$RUNNER_TEMP/history-tools/bin/pip" install --require-hashes --no-deps -r "$RUNNER_TEMP/history-requirements.txt"
+          echo "$RUNNER_TEMP/history-tools/bin" >> "$GITHUB_PATH"
+      - name: Verify exact cleanup against the reviewed mirror
+        run: python .github/maintenance/history_cleanup.py
+      - name: Await authorized window and atomically update branch history
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/maintenance/history_cleanup.py apply
+
