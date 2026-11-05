@@ -56,7 +56,7 @@ Die vorhandene Pangolin-Anmeldung bleibt aktiviert. Nur folgende exakte Pfade be
 
 Diese Pfade übernehmen die OAuth-Anmeldung und Token-Prüfung der App. Die Regeln gelten unabhängig von Query-Parametern. Niemals pauschal `/auth/*`, `/admin/*`, `/.well-known/*` oder `*` von der Anmeldung ausnehmen. Insbesondere `/auth/login` und `/auth/callback` gehören weiterhin zur geschützten Verwaltung.
 
-Bei aktivierten Ressourcenregeln die bestehenden Zugriffsbeschränkungen erhalten. Eine abschließende **Pass to Auth**-Regel für alle übrigen Anfragen muss die vorhandene Anmeldung erzwingen. Bestehende Block-Regeln nicht durch vorgeschaltete Bypass-Regeln aushebeln. Pangolin verarbeitet Regeln nach Priorität; eine Pass-to-Auth-Regel umgeht keine späteren Zugriffskontrollen. Siehe [offizielle Pfadregeln](https://docs.pangolin.net/manage/access-control/rules).
+Bei aktivierten Ressourcenregeln die bestehenden Zugriffsbeschränkungen erhalten. Eine abschließende **Pass to Auth**-Regel für alle übrigen Anfragen muss die vorhandene Anmeldung erzwingen. Bestehende Block-Regeln nicht durch vorgeschaltete Bypass-Regeln aushebeln. Pangolin verarbeitet Regeln nach Priorität. Bereits nötige Block-Regeln vor passende Bypass-Regeln stellen und das Ergebnis ohne bestehende Sitzung prüfen. Siehe [offizielle Pfadregeln](https://docs.pangolin.net/manage/access-control/rules).
 
 **Vor Abnahme im privaten Browserfenster ohne Pangolin-Sitzung prüfen:** `/admin/`, `/login`, `/auth/login` und `/auth/callback` müssen weiter die Pangolin-Anmeldung verlangen. Discovery und `/consent` dürfen keine Pangolin-HTML-Seite liefern. `/mcp` ohne OAuth-Token muss die App mit 401 ablehnen. Bei abweichendem Verhalten die neuen Bypass-Regeln zurücknehmen und die Pangolin-Konfiguration prüfen.
 
