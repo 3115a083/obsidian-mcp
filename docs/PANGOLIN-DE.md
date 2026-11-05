@@ -1,5 +1,8 @@
 # Pangolin sicher einrichten
 
+Für eine direkte ChatGPT-Verbindung ab Version 2.1 siehe [CHATGPT.md](CHATGPT.md). Dafür eine separate OAuth-Ressource auf Port 3062 verwenden. Die bestehende Verwaltungsressource und ihre Pangolin-Anmeldung bleiben erhalten. Die folgenden Bridge-Einstellungen gelten für den bisherigen Zugang.
+
+
 ## Ressource und Verwaltung
 
 1. Eine HTTPS-Ressource anlegen und die Newt-Site auswählen.

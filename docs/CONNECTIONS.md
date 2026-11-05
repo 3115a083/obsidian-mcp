@@ -1,5 +1,8 @@
 # Protected MCP connections
 
+Für eine direkte ChatGPT-Verbindung ab Version 2.1 siehe [CHATGPT.md](CHATGPT.md). Dafür eine separate OAuth-Ressource auf Port 3062 verwenden. Die bestehende Verwaltungsressource und ihre Pangolin-Anmeldung bleiben erhalten. Die folgenden Bridge-Einstellungen gelten für den bisherigen Zugang.
+
+
 ## Browser
 
 Pangolin authentication stays active for the resource. Browser administration then requires the single central GitHub OAuth login and numeric account allowlist. Public app protocol metadata or health output does not bypass the front proxy or grant vault access.

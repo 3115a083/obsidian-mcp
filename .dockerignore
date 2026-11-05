@@ -4,6 +4,7 @@
 !app.py
 !auth.py
 !bridge.py
+!connection.py
 !deployment.py
 !settings.py
 !state.py

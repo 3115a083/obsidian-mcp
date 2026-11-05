@@ -12,7 +12,7 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-APP_FILES = {"requirements.txt", "app.py", "auth.py", "bridge.py", "deployment.py",
+APP_FILES = {"requirements.txt", "app.py", "auth.py", "bridge.py", "connection.py", "deployment.py",
              "settings.py", "state.py", "ui.py", "vault.py", "web.py", "worker.py"}
 RUNTIME_FILES = {".env", "master.key", "state.sqlite3", "bridge.env", "compose.override.yaml"}
 

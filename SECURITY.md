@@ -4,9 +4,9 @@ This is public source code for a privately operated, read-only Obsidian integrat
 
 ## Trust boundaries
 
-- Pangolin protects the public resource. The app does not disable or reconfigure it.
+- Pangolin protects the existing browser/admin resource. The optional separate machine resource uses GitHub owner OAuth and a proxy-injected origin secret. Its listener cannot route to administration, even with a spoofed Host. The app does not reconfigure Pangolin.
 - Browser administration requires the allowlisted numeric GitHub account ID.
-- MCP requests require either the central GitHub OAuth flow or an expiring, explicitly scoped app capability token.
+- Legacy MCP requests require either the central GitHub OAuth flow or an expiring, explicitly scoped app capability token. The separate direct ChatGPT origin accepts only owner GitHub OAuth. Owner access covers all explicitly configured shares.
 - The optional STDIO bridge supplies a separate Pangolin resource credential. Run it only inside the operator's trust boundary or behind a correctly associated private Secure MCP Tunnel.
 - Each vault worker mounts one selected directory read-only and accepts only its own internal credential. Workers share an internal Docker backplane. This is filesystem and credential separation, not a claim of one isolated network per vault.
 - The app has no vault mount and no Docker socket. It can write its state and the explicitly mounted local Compose override. Treat administration as a server-management privilege: that file takes effect when the operator deploys it.
@@ -21,7 +21,7 @@ Revoke an individual app capability in the GUI and its Pangolin credential in Pa
 
 ## Automated checks
 
-CI runs pinned CodeQL Python analysis, full reachable-history Gitleaks scans, unit and real-browser tests, a real Docker/worker/Nginx test, pip-audit, Bandit, image vulnerability scans and secret scans. The weekly schedule rescans current main, rebuilds candidate images, and separately checks both published private stable images with read-only registry permissions. A passing rebuilt gateway is not evidence that an older deployed image is patched. Files alone do not prove successful runs. Dependabot proposes reviewed dependency and Action updates; hash locks must be regenerated and checked when needed.
+CI runs pinned CodeQL Python analysis, full reachable-history Gitleaks scans, unit and real-browser tests, a real Docker/worker/Nginx test, pip-audit, Bandit, image vulnerability scans and secret scans. The weekly schedule rescans current main, rebuilds candidate images, and separately checks both published stable images with read-only registry permissions. A passing rebuilt gateway is not evidence that an older deployed image is patched. Files alone do not prove successful runs. Dependabot proposes reviewed dependency and Action updates; hash locks must be regenerated and checked when needed.
 
 Four precise Bandit heuristic dispositions are documented inline, not global rule exclusions: the internal worker's listener, its isolated tmpfs/HOME declarations, and the public OAuth endpoint/auth-method identifier. None is an embedded credential or a host temporary-file operation. Deployment tests enforce that workers publish no ports. Changes to these boundaries require fresh review; do not add blanket suppressions.
 
@@ -46,3 +46,13 @@ Image boundary checks inspect metadata and every saved layer, including files de
 The repository owner, GitHub noreply commit identities, commit timestamps, package paths and OCI source/revision labels are public identifiers. This distribution is not anonymous. Container registries do not provide a reliable unlisted/search-exclusion mode for public packages. Public copies and indexing cannot be revoked.
 
 The gateway sends X-Robots-Tag: noindex, nofollow, noarchive for its own HTTP responses. This is a voluntary crawler directive for the running service, not access control, and does not control indexing on GitHub, GHCR or the upstream Pangolin login page.
+
+## Direct ChatGPT ingress
+
+Opt-in `MCP_PUBLIC_URL` must be a distinct HTTPS origin. `MCP_ORIGIN_SECRET` must be a random URL-safe secret of at least 43 characters. Pangolin must overwrite `X-Pangolin-Origin` for the new resource. Never place this value in source, a URL or ChatGPT settings. The existing interactive Pangolin gate remains on the administration resource.
+
+The two Nginx listeners overwrite an ingress marker, and both application routes enforce it before routing. This marker is not a secret and is not trusted from clients. The actual origin secret, OAuth issuer/audience/signature, PKCE, transaction-bound consent cookies, exact GitHub owner ID and ChatGPT redirect allowlist protect the new path. Legacy capability tokens and browser cookies cannot authenticate direct MCP requests.
+
+Direct OAuth state and JWT keys use separate derivations and storage from existing sessions and legacy OAuth. Both use the same central GitHub App. No state migration or credential reset occurs. Anonymous direct ingress is bounded by a global rate bucket, a tighter registration bucket, eight concurrent requests, 20-second body reads, 16 KiB OAuth / 64 KiB MCP bodies and an independent 32 MiB / 4096-entry OAuth storage budget. Budget exhaustion fails closed and requires operator inspection; this is not automatic state cleanup. Nginx adds a separate request limit. No forwarded client IP is trusted for application limits. These bounds reduce abuse; they do not guarantee availability against a distributed attack or an upstream outage.
+
+The direct route has only discovery, OAuth, health and four read-only tools. Vault mounts, per-worker credentials, note filtering and explicit configured shares remain unchanged. Disable the new resource for immediate broad revocation. Revoking a legacy client token does not revoke an OAuth connection. See [CHATGPT.md](docs/CHATGPT.md) for setup and rollback.

@@ -33,8 +33,11 @@ def main():
             override.write_text("services: {}\n")
             # Ephemeral synthetic CI file, shared with non-root test container only.
             override.chmod(0o666)
+            origin_secret = secrets.token_urlsafe(48)
             app_env = root / "app.env"
             app_env.write_text("MCP_IMAGE=obsidian-mcp-ci:test\nMCP_GATEWAY_IMAGE=obsidian-mcp-gateway-ci:test\nPUBLIC_URL=https://obsidian.test\nGITHUB_CLIENT_ID=synthetic-ci-client\nGITHUB_CLIENT_SECRET=synthetic-ci-secret\nGITHUB_OWNER_ID=12345\nVAULT_PARENT=/srv/obsidian/vaults\n")
+            with app_env.open("a") as handle:
+                handle.write("MCP_PUBLIC_URL=https://chatgpt.obsidian.test\nMCP_ORIGIN_SECRET=" + origin_secret + "\n")
             app_env.chmod(0o600)
             docker("run", "-d", "--name", app, "--network", network, "--network-alias", "app", "--read-only", "--cap-drop", "ALL",
                    "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "--security-opt", "no-new-privileges:true",
@@ -43,19 +46,25 @@ def main():
             repo = Path(__file__).resolve().parents[1]
             nginx_image = "obsidian-mcp-gateway-ci:test"
             docker("run", "-d", "--name", gateway, "--network", network, "--read-only", "--user", "568:568", "--cap-drop", "ALL",
-                   "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "-p", "127.0.0.1::8080", "--entrypoint", "nginx",
+                   "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "-p", "127.0.0.1::8080", "-p", "127.0.0.1::8081", "--entrypoint", "nginx",
                    "--mount", f"type=bind,source={repo / 'nginx.conf'},target=/etc/nginx/nginx.conf,readonly",
                    nginx_image, "-c", "/etc/nginx/nginx.conf", "-g", "daemon off;")
             address = docker("port", gateway, "8080/tcp").splitlines()[0]
             endpoint = "http://" + address
 
-            def request(path, data=None, token=None):
-                headers = {"Host": "obsidian.test", "Accept": "application/json, text/event-stream"}
+            direct_endpoint = "http://" + docker("port", gateway, "8081/tcp").splitlines()[0]
+
+            def request(path, data=None, token=None, *, direct=False, host=None, origin=True, marker=None):
+                headers = {"Host": host or ("chatgpt.obsidian.test" if direct else "obsidian.test"), "Accept": "application/json, text/event-stream"}
+                if direct and origin:
+                    headers["X-Pangolin-Origin"] = origin_secret
+                if marker:
+                    headers["X-Obsidian-Connection"] = marker
                 if token:
                     headers["Authorization"] = "Bearer " + token
                 if data is not None:
                     headers["Content-Type"] = "application/json"
-                req = urllib.request.Request(endpoint + path, data=json.dumps(data).encode() if data is not None else None, headers=headers)
+                req = urllib.request.Request((direct_endpoint if direct else endpoint) + path, data=json.dumps(data).encode() if data is not None else None, headers=headers)
                 try:
                     with urllib.request.urlopen(req, timeout=3) as response:
                         if path == "/healthz":
@@ -75,8 +84,18 @@ def main():
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Synthetic application container did not become ready")
                 time.sleep(0.25)
-            assert json.loads(body)["version"] == "2.0.0"
+            assert json.loads(body)["version"] == "2.1.0"
             assert request("/login")[0] == 200
+            assert request("/healthz", direct=True)[0] == 200
+            assert request("/.well-known/oauth-authorization-server", direct=True, origin=False)[0] == 403
+            status, body = request("/.well-known/oauth-authorization-server", direct=True)
+            assert status == 200 and json.loads(body)["issuer"] == "https://chatgpt.obsidian.test/"
+            status, body = request("/.well-known/oauth-protected-resource/mcp", direct=True)
+            assert status == 200 and json.loads(body)["resource"] == "https://chatgpt.obsidian.test/mcp"
+            assert request("/admin/", direct=True)[0] == 404
+            assert request("/admin/", direct=True, host="obsidian.test", marker="legacy")[0] == 404
+            assert request("/healthz", host="chatgpt.obsidian.test", marker="direct")[0] == 404
+            assert request("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, direct=True)[0] == 401
             assert request("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})[0] == 401
             code = """import json
 from pathlib import Path
@@ -89,6 +108,7 @@ t,i=s.issue_client('Synthetic CI',[c['vaults'][0]['id']],1)
 print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['id'])}))
 """
             credentials = json.loads(docker("exec", app, "python", "-c", code))
+            assert request("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, credentials["token"], direct=True)[0] == 401
             # Validate the generated file through real Compose interpolation.
             rendered = json.loads(docker("compose", "--env-file", str(app_env), "-f", str(repo / "compose.yaml"),
                                          "-f", str(override), "config", "--format", "json"))
@@ -122,7 +142,7 @@ print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['i
             assert docker("inspect", "--format", "{{.HostConfig.ReadonlyRootfs}}", worker) == "true"
             docker("exec", app, "python", "-c", "from state import State;State('/data').revoke_client('" + credentials["id"] + "')")
             assert request("/mcp", rpc, credentials["token"])[0] == 401
-            print("Docker smoke passed: Nginx proxy, non-root app, scoped MCP read, worker authentication, read-only mount and immediate revocation.")
+            print("Docker smoke passed: separate OAuth ingress, Host/header spoof rejection, Nginx proxy, non-root app, scoped MCP read, worker authentication, read-only mount and immediate revocation.")
     finally:
         for name in (gateway, app, worker):
             docker("rm", "--force", name, check=False)
