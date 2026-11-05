@@ -1,5 +1,8 @@
 # Pangolin sicher einrichten
 
+Für eine direkte ChatGPT-Verbindung ab Version 2.1 siehe [CHATGPT.md](CHATGPT.md). Verwaltung und MCP können dieselbe Domain und Port 3061 verwenden. Nur exakte OAuth-/MCP-Pfade erhalten Bypass-Regeln; die Verwaltung behält ihre Pangolin-Anmeldung. Der gemeinsame direkte Endpunkt akzeptiert keine alten Bridge-Tokens. Die folgenden Einstellungen gelten für den bisherigen Bridge-Modus.
+
+
 ## Ressource und Verwaltung
 
 1. Eine HTTPS-Ressource anlegen und die Newt-Site auswählen.

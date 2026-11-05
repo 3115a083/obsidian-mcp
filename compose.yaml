@@ -6,6 +6,8 @@ services:
     user: ${MCP_UID:-568}:${MCP_GID:-568}
     environment:
       PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_ORIGIN_SECRET: ${MCP_ORIGIN_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?Set GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET}
       GITHUB_OWNER_ID: ${GITHUB_OWNER_ID:?Set GITHUB_OWNER_ID}
@@ -39,13 +41,6 @@ services:
     depends_on: [app]
     ports:
       - ${MCP_BIND_IP:-127.0.0.1}:${MCP_GATEWAY_PORT:-3061}:8080
-    volumes:
-      - type: bind
-        source: ./nginx.conf
-        target: /etc/nginx/nginx.conf
-        read_only: true
-        bind:
-          create_host_path: false
     networks: [front]
     read_only: true
     tmpfs:

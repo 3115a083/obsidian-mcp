@@ -2,7 +2,11 @@
 
 Private, read-only Obsidian integration with one GitHub login, a configuration GUI and separate vault workers. Built for a Linux Docker host such as TrueNAS with Newt in host networking.
 
-**Version 2.0.0 is released. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
+**Version 2.1.0 adds an opt-in ChatGPT OAuth connection on the existing domain. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
+
+## Direct ChatGPT connection
+
+Use the [ChatGPT setup guide](docs/CHATGPT.md) to connect the existing domain at `/mcp` using GitHub OAuth and automatic client registration. `/admin/` remains on the same domain and gateway port, behind its existing Pangolin login. Only exact documented OAuth/MCP routes bypass the proxy login and use application OAuth instead. Reuse the same GitHub OAuth App and existing callbacks. This mode accepts the configured owner and all explicitly shared vaults; legacy scoped tokens do not authenticate its `/mcp` endpoint. An optional separate-origin mode preserves unchanged bridge clients.
 
 ## What changes in version 2
 
@@ -10,7 +14,7 @@ Private, read-only Obsidian integration with one GitHub login, a configuration G
 - One MCP endpoint, `/mcp`. Client tokens select the permitted vaults; new shares require no new OAuth App.
 - A GUI for adding, removing and retargeting vault shares. Workers mount only their selected directory, read-only.
 - A Pangolin-aware STDIO bridge. It sends both Pangolin access-token headers before the request reaches Pangolin and supplies an independently scoped app token.
-- Private prebuilt GHCR app and gateway images. Server updates pull images; no local Python/Docker rebuild is required.
+- Public prebuilt GHCR app and gateway images. Server updates pull images; no local Python/Docker rebuild is required.
 - Locked dependency hashes, pinned Actions/base images, tests and regular security scans.
 
 The app never configures Pangolin or starts Docker containers itself. Saving generates a local Compose override; apply it from Dockge. The app has no Docker socket.
@@ -31,13 +35,7 @@ The app never configures Pangolin or starts Docker containers itself. Saving gen
    ```
 
    Default container UID/GID are 568. If changing them, pass `MCP_UID`/`MCP_GID` to the preparation command too. TrueNAS ACLs must permit each worker to traverse/read its selected vault directory. Do not grant blanket write access.
-6. Authenticate the **Docker client that performs pulls** to private GHCR with a locally entered, expiring credential with `read:packages`. For an interactive host client:
-
-   ```bash
-   sudo docker login ghcr.io --username YOUR_GITHUB_LOGIN
-   ```
-
-   Enter the token at the password prompt. A host login does not automatically authenticate the Docker CLI inside Dockge. Dockge needs its own persistent, protected Docker configuration or credential helper. Do not mount these registry credentials into this app or its workers. The exact configuration depends on your Dockge installation and remains an operator setup step.
+6. The published app and gateway packages are public. Pull the verified release images; registry credentials are unnecessary for these public packages. If deploying an independently private package, authenticate only the Docker client that performs pulls, never the app or vault workers.
 7. In Dockge pull and deploy. The base Compose file automatically merges local `compose.override.yaml`. Both files must be in the stack directory. Use a free gateway port; the default is bound to `127.0.0.1:3061`.
 
 ## Pangolin stays protected
@@ -56,7 +54,11 @@ Authorization: Bearer <scoped app token>
 
 The first two authenticate to Pangolin; the last authorizes access to selected vaults in this app. Do not confuse these with GitHub OAuth credentials. No credential is embedded in a URL. Redirects are deliberately not followed so headers cannot leak to another origin.
 
-**A normal cloud ChatGPT MCP connection cannot be assumed to send arbitrary Pangolin headers.** Changing the server cannot add a header to a request that has already been rejected by Pangolin. Use the bridge with a compatible local client or a correctly associated private Secure MCP Tunnel. See [the connection guide](docs/CONNECTIONS.md) and [German Pangolin setup guide](docs/PANGOLIN-DE.md). This is an implemented bridge path, not a claim of live OpenAI account/tunnel availability.
+**For a direct cloud ChatGPT connection use the OAuth mode described in [CHATGPT.md](docs/CHATGPT.md).** The original bridge connection below still needs Pangolin headers. Changing the server cannot add a header to a request that has already been rejected by Pangolin. On the original protected origin use the bridge with a compatible local client or a correctly associated private Secure MCP Tunnel. See [the connection guide](docs/CONNECTIONS.md) and [German Pangolin setup guide](docs/PANGOLIN-DE.md). This is an implemented bridge path, not a claim of live OpenAI account/tunnel availability.
+
+## Recover from a bad vault mount
+
+Run `sudo docker compose -f compose.yaml up -d app gateway` from the existing stack directory, with the existing Dockge project name. This starts administration without loading generated vault services. Correct the host directory in `/admin/`, save, then apply both files again. See [RECOVERY.md](docs/RECOVERY.md). Do not delete state, create a replacement empty vault or disable read-only/path-creation safeguards. The gateway configuration is packaged with the matching image; the new base Compose no longer needs a host nginx.conf mount.
 
 ## Add or change vaults
 
@@ -70,15 +72,15 @@ In **Client-Zugriff begrenzen**, create an expiring token for the selected share
 
 ## Updates and rollback
 
-For image-only updates, use Dockge's authenticated image pull and deploy. For changed deployment files, update the private checkout first. A shell update uses:
+For image-only updates, use Dockge's authenticated image pull and deploy. For changed deployment files, update the source checkout first. A shell update uses:
 
 ```bash
 git pull --ff-only && sudo docker compose pull && sudo docker compose up -d --remove-orphans
 ```
 
-There is no `build:` in production Compose. Runtime data, `.env` and generated overrides are untracked and must be preserved. Weekly and manually dispatched runs also scan both already-published private `stable` images, so a clean rebuilt candidate does not hide vulnerable installed releases. Scheduled scans do not silently deploy or merge updates. Dependabot creates reviewable proposals; after dependency changes regenerate and review both hash lockfiles.
+There is no `build:` in production Compose. Runtime data, `.env` and generated overrides are untracked and must be preserved. Weekly and manually dispatched runs also scan both already-published `stable` images, so a clean rebuilt candidate does not hide vulnerable installed releases. Scheduled scans do not silently deploy or merge updates. Dependabot creates reviewable proposals; after dependency changes regenerate and review both hash lockfiles.
 
-Both private packages, `obsidian-mcp` and `obsidian-mcp-gateway`, must be readable by the pulling client. The gateway applies Alpine package updates to its pinned Nginx base at build time, and CI scans the resulting image before publication. These OS updates follow the Alpine repositories rather than a frozen package mirror; the immutable published image is the deployment artifact.
+Both packages, `obsidian-mcp` and `obsidian-mcp-gateway`, must be readable by the pulling client. The gateway applies Alpine package updates to its pinned Nginx base at build time, and CI scans the resulting image before publication. These OS updates follow the Alpine repositories rather than a frozen package mirror; the immutable published image is the deployment artifact.
 
 The `stable` tag is an update channel. For a fixed installation or rollback, put a successful immutable `sha-...-run-...` tag or image digest into `MCP_IMAGE` and the matching successful gateway tag into `MCP_GATEWAY_IMAGE`. Back up state and test the restore procedure before a production migration. No actual TrueNAS backup/restore has been performed by this implementation.
 

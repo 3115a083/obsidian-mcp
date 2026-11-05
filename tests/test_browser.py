@@ -4,6 +4,9 @@ Only synthetic provider replies and an ephemeral local test TLS key are used.
 No test route or provider override is shipped in the production image.
 """
 import datetime
+import base64
+from dataclasses import replace
+import hashlib
 import os
 from pathlib import Path
 import socket
@@ -11,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from cryptography import x509
@@ -19,6 +23,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 from playwright.sync_api import sync_playwright
 import uvicorn
+import httpx2
 
 from app import create_app
 from tests.support import github_transport, settings_for
@@ -47,6 +52,9 @@ class RealBrowserTests(unittest.TestCase):
         port = listener.getsockname()[1]
         self.origin = f"https://localhost:{port}"
         settings = settings_for(root, self.origin)
+        self.direct_origin = self.origin
+        self.origin_secret = 'synthetic-browser-origin-' + 'x' * 48
+        settings = replace(settings, mcp_public_url=self.direct_origin, mcp_origin_secret=self.origin_secret)
         self.application = create_app(settings, oauth_transport=github_transport())
         self.server = uvicorn.Server(uvicorn.Config(self.application, host="127.0.0.1", port=port,
             ssl_keyfile=str(keyfile), ssl_certfile=str(certfile), log_level="error", access_log=False))
@@ -61,6 +69,61 @@ class RealBrowserTests(unittest.TestCase):
     def stop_server(self):
         self.server.should_exit = True
         self.thread.join(timeout=5)
+
+    def test_direct_oauth_consent_in_real_browser(self):
+        from fastmcp.server.auth.providers import github
+        client_class = httpx2.AsyncClient
+        transport = github_transport()
+        callback = 'https://chatgpt.com/connector/oauth/synthetic-browser'
+        verifier = 'synthetic-browser-verifier-' + 'x' * 48
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+        with patch.object(github.httpx2, 'AsyncClient', side_effect=lambda *a, **kw: client_class(*a, **kw, transport=transport)), sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                context = browser.new_context(ignore_https_errors=True, extra_http_headers={
+                    'X-Obsidian-Connection': 'legacy', 'X-Pangolin-Origin': self.origin_secret})
+                registration = context.request.post(self.direct_origin + '/register', data={
+                    'client_name': 'Synthetic browser', 'redirect_uris': [callback],
+                    'token_endpoint_auth_method': 'none', 'grant_types': ['authorization_code'],
+                    'response_types': ['code']})
+                self.assertEqual(registration.status, 201, registration.text())
+                page = context.new_page()
+                def redirect_boundary(route, link_id):
+                    # Exercise the real browser POST, Origin, CSRF and cookies.
+                    # Chromium does not re-route an external redirect hop, so
+                    # make only the provider boundary a fresh link navigation.
+                    response = route.fetch(max_redirects=0)
+                    self.assertIn(response.status, (302, 303), response.text())
+                    target = response.headers['location'].replace('&', '&amp;')
+                    route.fulfill(response=response, status=200,
+                        headers={**{key: value for key, value in response.headers.items()
+                                    if key not in ('content-length', 'location')}, 'content-type': 'text/html'},
+                        body='<a id="' + link_id + '" href="' + target + '">Continue</a>')
+                page.route(lambda url: urlsplit(url).path == '/consent',
+                    lambda route: redirect_boundary(route, 'provider-start') if route.request.method == 'POST' else route.continue_())
+                page.route(self.direct_origin + '/auth/mcp/callback?**', lambda route: redirect_boundary(route, 'client-return'))
+                def github_redirect(route):
+                    query = parse_qs(urlsplit(route.request.url).query)
+                    target = query['redirect_uri'][0] + '?' + urlencode({'state': query['state'][0], 'code': 'synthetic-code'})
+                    route.fulfill(status=200, content_type='text/html', body='<a id="continue" href="' + target.replace('&', '&amp;') + '">Continue</a>')
+                page.route('https://github.com/login/oauth/authorize**', github_redirect)
+                page.route(callback + '**', lambda route: route.fulfill(status=200, body='Synthetic OAuth completion'))
+                page.goto(self.direct_origin + '/authorize?' + urlencode({
+                    'client_id': registration.json()['client_id'], 'redirect_uri': callback,
+                    'response_type': 'code', 'state': 'synthetic-browser-state',
+                    'code_challenge': challenge, 'code_challenge_method': 'S256',
+                    'resource': self.direct_origin + '/mcp'}))
+                self.assertTrue(page.locator('[name="csrf_token"]').input_value())
+                page.locator('button[value="approve"]').click()
+                page.locator('#provider-start').click()
+                page.locator('#continue').click()
+                page.locator('#client-return').click()
+                page.wait_for_url(callback + '**')
+                query = parse_qs(urlsplit(page.url).query)
+                self.assertEqual(query['state'], ['synthetic-browser-state'])
+                self.assertTrue(query['code'][0])
+            finally:
+                browser.close()
 
     def test_browser_login_and_csrf_submission_and_draft_preservation(self):
         with sync_playwright() as playwright:
