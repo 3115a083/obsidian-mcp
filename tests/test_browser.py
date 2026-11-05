@@ -88,7 +88,7 @@ class RealBrowserTests(unittest.TestCase):
                     'response_types': ['code']})
                 self.assertEqual(registration.status, 201, registration.text())
                 page = context.new_page()
-                def consent_submit(route):
+                def redirect_boundary(route, link_id):
                     # Exercise the real browser POST, Origin, CSRF and cookies.
                     # Chromium does not re-route an external redirect hop, so
                     # make only the provider boundary a fresh link navigation.
@@ -96,9 +96,11 @@ class RealBrowserTests(unittest.TestCase):
                     self.assertIn(response.status, (302, 303), response.text())
                     target = response.headers['location'].replace('&', '&amp;')
                     route.fulfill(response=response, status=200,
-                        headers={**response.headers, 'content-type': 'text/html'},
-                        body='<a id="provider-start" href="' + target + '">Provider login</a>')
-                page.route(self.direct_origin + '/consent', consent_submit)
+                        headers={**{key: value for key, value in response.headers.items()
+                                    if key not in ('content-length', 'location')}, 'content-type': 'text/html'},
+                        body='<a id="' + link_id + '" href="' + target + '">Continue</a>')
+                page.route(self.direct_origin + '/consent', lambda route: redirect_boundary(route, 'provider-start'))
+                page.route(self.direct_origin + '/auth/mcp/callback?**', lambda route: redirect_boundary(route, 'client-return'))
                 def github_redirect(route):
                     query = parse_qs(urlsplit(route.request.url).query)
                     target = query['redirect_uri'][0] + '?' + urlencode({'state': query['state'][0], 'code': 'synthetic-code'})
@@ -114,6 +116,7 @@ class RealBrowserTests(unittest.TestCase):
                 page.locator('button[value="approve"]').click()
                 page.locator('#provider-start').click()
                 page.locator('#continue').click()
+                page.locator('#client-return').click()
                 page.wait_for_url(callback + '**')
                 query = parse_qs(urlsplit(page.url).query)
                 self.assertEqual(query['state'], ['synthetic-browser-state'])
