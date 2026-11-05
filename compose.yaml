@@ -41,7 +41,6 @@ services:
     depends_on: [app]
     ports:
       - ${MCP_BIND_IP:-127.0.0.1}:${MCP_GATEWAY_PORT:-3061}:8080
-      - ${MCP_BIND_IP:-127.0.0.1}:${MCP_CHATGPT_PORT:-3062}:8081
     volumes:
       - type: bind
         source: ./nginx.conf

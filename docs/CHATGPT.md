@@ -1,17 +1,24 @@
-# ChatGPT direkt über OAuth anbinden
+# ChatGPT über die vorhandene Obsidian-Domain anbinden
 
-Version 2.1 ergänzt einen getrennten Streamable-HTTP-Zugang für ChatGPT. Die bestehende Verwaltung bleibt hinter Pangolin-Anmeldung. Die neue MCP-Adresse nutzt GitHub OAuth, die serverseitige numerische Owner-ID und eine eigene Pangolin-Origin-Prüfung. Es gibt weiterhin genau eine GitHub OAuth App für die Instanz.
+Ab Version 2.1 können Verwaltung und MCP dieselbe Domain und denselben Gateway-Port verwenden:
 
-## 1. Dockge aktualisieren
+| URL | Aufgabe | Zugang |
+| --- | --- | --- |
+| `https://obsidian.example.invalid/admin/` | Verwaltung | Pangolin-Anmeldung und GitHub-Owner |
+| `https://obsidian.example.invalid/mcp` | ChatGPT | GitHub OAuth, ausschließlich der konfigurierte Owner |
 
-Nach Veröffentlichung der neuen Images zuerst die Deployment-Dateien aus dem geprüften Release übernehmen. Ein reines Image-Update ergänzt keine neuen Compose-Variablen, Ports oder die eingebundene `nginx.conf`. Bestehende `.env`, `data/` und `compose.override.yaml` erhalten. Danach beide passenden Images in Dockge ziehen und neu bereitstellen.
+Eine zusätzliche Domain ist nicht erforderlich. Auf den exakt festgelegten MCP-/OAuth-Routen darf Pangolin keine HTML-Anmeldung vorschalten. Dort schützt die Anwendung mit OAuth. Alle anderen Pfade bleiben hinter Pangolin.
 
-Lokal in `.env` ergänzen, mit einer eigenen, separaten HTTPS-Domain:
+## 1. Dockge
+
+Nach Veröffentlichung zuerst die geprüften Deployment-Dateien einschließlich `compose.yaml` und der eingebundenen `nginx.conf` übernehmen. Bestehende `.env`, `data/` und `compose.override.yaml` erhalten. Danach beide passenden Images in Dockge ziehen und neu bereitstellen. Ein Image-Update allein ergänzt keine neuen Compose-Variablen.
+
+In `.env` dieselbe vorhandene HTTPS-Origin für beide Variablen verwenden:
 
 ```dotenv
-MCP_PUBLIC_URL=https://mcp-vaults.example.invalid
+PUBLIC_URL=https://obsidian.example.invalid
+MCP_PUBLIC_URL=https://obsidian.example.invalid
 MCP_ORIGIN_SECRET=HIER_LOKAL_ERZEUGTES_ZUFAELLIGES_GEHEIMNIS
-MCP_CHATGPT_PORT=3062
 ```
 
 Ein Geheimnis lokal erzeugen:
@@ -20,78 +27,76 @@ Ein Geheimnis lokal erzeugen:
 python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
 ```
 
-Den Wert weder in Git noch in ChatGPT eintragen. Die neue Compose-Datei ergänzt unter `services.app.environment`:
+Den Wert weder in Git noch in ChatGPT eintragen. Unter `services.app.environment` ergänzt die neue Compose-Datei:
 
 ```yaml
 MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
 MCP_ORIGIN_SECRET: ${MCP_ORIGIN_SECRET:-}
 ```
 
-Unter `services.gateway.ports` kommt diese zusätzliche Zeile hinzu:
+Der vorhandene Gateway-Port bleibt `127.0.0.1:3061:8080`. Kein zusätzlicher veröffentlichter Port ist erforderlich. Ohne beide neuen Variablen bleibt der bisherige Modus erhalten. Bei aktivem Modus lässt ein fehlender oder schwacher Origin-Schlüssel die Anwendung nicht starten.
 
-```yaml
-- ${MCP_BIND_IP:-127.0.0.1}:${MCP_CHATGPT_PORT:-3062}:8081
-```
+## 2. Bestehende Pangolin-Ressource
 
-`PUBLIC_URL` und Port 3061 bleiben für die bestehende Verwaltung erhalten. Ohne beide neuen Variablen bleibt der direkte Zugang deaktiviert. Ein leerer oder schwacher Origin-Schlüssel lässt die aktivierte Anwendung nicht starten. Die App und Vault-Worker erhalten keine zusätzlichen veröffentlichten Ports.
+Die Ressource zeigt weiterhin über Newt auf `http://127.0.0.1:3061`. Host und Pfad unverändert weiterleiten. Pangolin setzt auf allen weitergeleiteten Requests `X-Pangolin-Origin` auf den lokalen Wert von `MCP_ORIGIN_SECRET` und **überschreibt** vorhandene Client-Werte.
 
-## 2. Eine zusätzliche Pangolin-Ressource
-
-Eine eigene Ressource für die neue MCP-Domain einrichten:
-
-| Einstellung | Wert |
-| --- | --- |
-| Öffentlicher Host | Host aus `MCP_PUBLIC_URL` |
-| Newt-Ziel bei Host-Netzwerk | `http://127.0.0.1:3062` |
-| Host und Pfad | Ursprünglich weiterleiten, keine Präfixe entfernen |
-| Request-Header | `X-Pangolin-Origin`, Wert von `MCP_ORIGIN_SECRET` |
-| Header-Verhalten | Vom Proxy setzen und vorhandenen Client-Wert überschreiben |
-| Interaktive Pangolin-Anmeldung | Für diese neue Maschinen-Ressource keine HTML-Anmeldeseite vorschalten |
-
-Die **bestehende Verwaltungsressource auf Port 3061 behält ihre Pangolin-Anmeldung**. Keine pauschalen Bypass-Regeln auf dieser Ressource hinzufügen. Der neue Host stellt keine Verwaltungsoberfläche bereit. Auch ein manipulierter Host-Header öffnet keine Admin-Route über Port 3062.
-
-Die komplette neue Domain muss für OAuth erreichbar sein, einschließlich `/.well-known/*`, `/authorize`, `/register`, `/token`, `/consent`, `/auth/mcp/callback` und `/mcp`. Auch Browser-Aufrufe der Zustimmungsseite brauchen den vom Proxy gesetzten Header. ChatGPT selbst muss keinen benutzerdefinierten Header senden.
-
-Der Origin-Header ersetzt keine Nutzeranmeldung. MCP-Anfragen brauchen weiterhin ein gültiges OAuth-Token des konfigurierten GitHub-Owners. Alte `omcp_`-Client-Tokens gelten ausschließlich am bisherigen Zugang.
-
-## 3. Bestehende GitHub OAuth App ergänzen
-
-Bei derselben App eine zusätzliche **exakte** Callback-URL registrieren:
+Die vorhandene Pangolin-Anmeldung bleibt aktiviert. Nur folgende exakte Pfade bekommen in dieser Ressource eine **Bypass Auth**-Regel, jeweils Match Type **Path**:
 
 ```text
-https://mcp-vaults.example.invalid/auth/mcp/callback
+/mcp
+/mcp/
+/.well-known/oauth-authorization-server
+/.well-known/oauth-protected-resource/mcp
+/authorize
+/token
+/register
+/consent
+/auth/mcp/callback
 ```
 
-Die bisherigen Callback-URLs unter `PUBLIC_URL` beibehalten. Wildcard-Matching ausgeschaltet lassen. GitHub unterstützt mehrere Callback-URLs für eine OAuth App, siehe [offizielle Ankündigung](https://github.blog/changelog/2026-08-14-multiple-redirect-uris-and-token-refresh-for-oauth-apps/).
+Diese Pfade übernehmen die OAuth-Anmeldung und Token-Prüfung der App. Die Regeln gelten unabhängig von Query-Parametern. Niemals pauschal `/auth/*`, `/admin/*`, `/.well-known/*` oder `*` von der Anmeldung ausnehmen. Insbesondere `/auth/login` und `/auth/callback` gehören weiterhin zur geschützten Verwaltung.
 
-Client ID, Client Secret und `GITHUB_OWNER_ID` auf dem Server bleiben unverändert. Keine zweite OAuth App pro Vault anlegen. Als GitHub-Nutzer ist ausschließlich die serverseitig hinterlegte numerische ID zugelassen.
+Bei aktivierten Ressourcenregeln die bestehenden Zugriffsbeschränkungen erhalten. Eine abschließende **Pass to Auth**-Regel für alle übrigen Anfragen muss die vorhandene Anmeldung erzwingen. Bestehende Block-Regeln nicht durch vorgeschaltete Bypass-Regeln aushebeln. Pangolin verarbeitet Regeln nach Priorität; eine Pass-to-Auth-Regel umgeht keine späteren Zugriffskontrollen. Siehe [offizielle Pfadregeln](https://docs.pangolin.net/manage/access-control/rules).
 
-## 4. In ChatGPT verbinden
+**Vor Abnahme im privaten Browserfenster ohne Pangolin-Sitzung prüfen:** `/admin/`, `/login`, `/auth/login` und `/auth/callback` müssen weiter die Pangolin-Anmeldung verlangen. Discovery und `/consent` dürfen keine Pangolin-HTML-Seite liefern. `/mcp` ohne OAuth-Token muss die App mit 401 ablehnen. Bei abweichendem Verhalten die neuen Bypass-Regeln zurücknehmen und die Pangolin-Konfiguration prüfen.
 
-In ChatGPT eine eigene MCP-App bzw. einen eigenen Connector anlegen, soweit diese Funktion im Konto verfügbar ist:
+Der Origin-Header ist eine zusätzliche Proxy-Prüfung, keine Nutzeranmeldung. Eine Browser-Session oder ein alter `omcp_`-Token authentifiziert keine direkte MCP-Verbindung.
+
+## 3. Bestehende GitHub OAuth App
+
+Dieselbe zentrale App weiterverwenden. Die bestehenden exakten Callback-URLs bleiben:
+
+```text
+https://obsidian.example.invalid/auth/callback
+https://obsidian.example.invalid/auth/mcp/callback
+```
+
+Keine neue Callback-Domain und keine neue App pro Vault erforderlich. Wildcard-Matching deaktiviert lassen. Client ID, Client Secret und die numerische `GITHUB_OWNER_ID` bleiben ausschließlich in der Serverkonfiguration.
+
+## 4. ChatGPT
+
+Eine eigene MCP-App bzw. einen eigenen Connector anlegen, soweit das Konto diese Funktion anbietet:
 
 | Einstellung | Wert |
 | --- | --- |
-| MCP-Server-URL | `https://mcp-vaults.example.invalid/mcp` |
+| MCP-Server-URL | `https://obsidian.example.invalid/mcp` |
 | Authentifizierung | OAuth |
 | Client ID / Client Secret | Bei automatischer Registrierung leer lassen |
 
-Die GitHub-App-Zugangsdaten gehören nur in die Serverkonfiguration. ChatGPT registriert seinen eigenen OAuth-Client über DCR oder seine veröffentlichte Client-Metadaten-URL. Die Anwendung erlaubt ausschließlich ChatGPT-Redirects unter `https://chatgpt.com/connector/oauth/*` sowie die exakte Adresse `https://chatgpt.com/connector_platform_oauth_redirect`. Keine fremden Callback-Domains hinzufügen.
+ChatGPT registriert seinen eigenen Client über DCR oder veröffentlichte Client-Metadaten. Die GitHub-App-Zugangsdaten gehören nicht in ChatGPT. Zugriff bestätigen und bei GitHub mit dem erlaubten Konto anmelden. Die Anwendung erlaubt nur ChatGPT-Redirects unter `https://chatgpt.com/connector/oauth/*` sowie die exakte Adresse `https://chatgpt.com/connector_platform_oauth_redirect`.
 
-Zugriff bestätigen, bei GitHub mit dem erlaubten Konto anmelden und die Verbindung abschließen. Der direkte Modus benötigt keinen lokalen STDIO-Bridge-Prozess und keinen zusätzlichen Tunnel. Die bisherige Bridge bleibt für kompatible lokale Clients verfügbar.
+Der direkte Modus benötigt keinen lokalen STDIO-Prozess und keinen zusätzlichen Tunnel. Der Owner sieht alle **explizit in dieser Instanz freigegebenen** Vaults. Vier lesende Werkzeuge bleiben verfügbar: `list_vaults`, `list_notes`, `read_note`, `search_notes`. Schreiben bleibt ausgeschlossen.
 
-Der Owner sieht alle **explizit in dieser Instanz freigegebenen** Vaults. Das ist kein pro-Connector eingeschränkter Client-Token. Für enger begrenzte lokale Clients die vorhandene Bridge mit ausgewählten Client-Rechten verwenden. Vier lesende Werkzeuge bleiben verfügbar: `list_vaults`, `list_notes`, `read_note`, `search_notes`.
+**Bestehende Clients:** Im gemeinsamen Modus wird `/mcp` absichtlich OAuth-only. Alte Bridge-Clients mit `omcp_`-Tokens müssen auf OAuth wechseln oder beim bisherigen Modus bleiben. Ihre Tokens werden nicht gelöscht, erhalten aber am direkten Endpunkt keinen Zugriff. Für den parallelen Betrieb unveränderter Bridge-Clients ist der unten beschriebene getrennte Ursprung verfügbar.
 
-## Prüfung und Rücknahme
+## Rücknahme und Widerruf
 
-- `GET /healthz` auf dem neuen Host liefert Version und Build-Revision.
-- `GET /.well-known/oauth-protected-resource/mcp` nennt die neue MCP-Adresse.
-- `GET /.well-known/oauth-authorization-server` nennt ausschließlich den neuen Issuer und seine Endpunkte.
-- MCP ohne OAuth-Token antwortet mit 401; Verwaltungsrouten am neuen Host mit 404.
-- Eine direkt erreichte Origin-Adresse ohne den Proxy-Header lehnt geschützte Routen ab.
+Für die Rücknahme zuerst die neuen Pangolin-Bypass-Regeln entfernen, beide neuen `MCP_*`-Variablen leeren und den Stack neu starten. Die bisherige Verwaltung und deren verschlüsselte Zustände bleiben erhalten. Die Owner-Freigaben bleiben explizit; das Entfernen einer Vault-Freigabe entfernt sie auch aus den OAuth-Werkzeugen.
 
-Beim Entfernen einer Vault-Freigabe verschwindet sie aus den erlaubten Owner-Werkzeugen. Alte Client-Tokens widerruft die GUI; das widerruft keine unabhängige OAuth-Verbindung. Für OAuth die Verbindung in ChatGPT trennen und die GitHub-Berechtigung bei Bedarf widerrufen. Für einen sofortigen vollständigen Stopp die neue Pangolin-Ressource deaktivieren oder den Stack stoppen.
+Die GUI widerruft alte App-Tokens, keine unabhängigen OAuth-Verbindungen. OAuth in ChatGPT trennen und bei Bedarf die GitHub-Berechtigung widerrufen. Für einen sofortigen vollständigen Stopp die Ressource deaktivieren oder den Stack stoppen. Ein geleaktes Origin-Geheimnis lokal erneuern und im Proxy ersetzen.
 
-Für eine Rücknahme die neue Ressource deaktivieren, beide `MCP_*`-Zugangsvariablen leeren und den Stack neu starten. Die bisherige Verwaltung und ihre verschlüsselten Zustände bleiben erhalten. Origin-Schlüssel bei Verdacht auf Offenlegung lokal erneuern und im Proxy ersetzen.
+## Optional: getrennte Domain für unveränderte Bridge-Clients
 
-Automatisierte Tests verwenden synthetische Daten und prüfen OAuth, PKCE, Zustimmung, Owner- und Ingress-Grenzen. Ein erfolgreicher Test ersetzt keine echte Verbindung mit dem eigenen Pangolin-, GitHub- und ChatGPT-Konto.
+Nur falls gewünscht `MCP_PUBLIC_URL` auf eine **andere** HTTPS-Origin setzen. Zusätzlich unter `gateway.ports` `127.0.0.1:3062:8081` veröffentlichen. Eine zweite Pangolin-Maschinenressource zeigt auf Port 3062 und setzt ebenfalls den Origin-Header, ohne eine interaktive Pangolin-Anmeldung vorzuschalten. Die bisherige Ressource auf Port 3061 behält ihre Anmeldung vollständig, ohne Bypass-Regeln. Bei der bestehenden GitHub App die zusätzliche exakte Callback-URL `https://NEUER_HOST/auth/mcp/callback` hinzufügen. Der neue Host stellt keine Verwaltungsoberfläche bereit; alte Client-Tokens bleiben am bisherigen Host verwendbar.
+
+Automatisierte Tests verwenden synthetische Daten. Eine echte Abnahme der eigenen Pangolin-, GitHub- und ChatGPT-Konfiguration bleibt nach der Einrichtung erforderlich.

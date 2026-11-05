@@ -8,6 +8,23 @@ import time
 from starlette.responses import JSONResponse
 
 
+DIRECT_PATHS = frozenset({
+    '/mcp', '/mcp/', '/authorize', '/token', '/register', '/consent',
+    '/auth/mcp/callback', '/.well-known/oauth-authorization-server',
+    '/.well-known/oauth-protected-resource/mcp',
+})
+
+
+class SharedOriginRouter:
+    """Exact machine routes use OAuth; every other route stays in the UI app."""
+    def __init__(self, *, admin, oauth):
+        self.admin, self.oauth = admin, oauth
+
+    async def __call__(self, scope, receive, send):
+        app = self.oauth if scope.get('path') in DIRECT_PATHS else self.admin
+        await app(scope, receive, send)
+
+
 class IngressFence:
     """Nginx overwrites this routing marker on each of its two listeners."""
     def __init__(self, app, *, entry):

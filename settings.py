@@ -41,9 +41,8 @@ class Settings:
             parsed_direct = urlsplit(direct)
             if (parsed_direct.scheme != 'https' or not parsed_direct.hostname
                     or parsed_direct.username or parsed_direct.password or parsed_direct.path
-                    or parsed_direct.query or parsed_direct.fragment or parsed_direct.port not in (None, 443)
-                    or parsed_direct.hostname == parsed.hostname):
-                raise ValueError('MCP_PUBLIC_URL must be a separate HTTPS origin without a path')
+                    or parsed_direct.query or parsed_direct.fragment or parsed_direct.port not in (None, 443)):
+                raise ValueError('MCP_PUBLIC_URL must be an HTTPS origin without a path')
             direct_authority = '[' + parsed_direct.hostname + ']' if ':' in parsed_direct.hostname else parsed_direct.hostname
             direct = 'https://' + direct_authority
             if not 43 <= len(origin_secret) <= 256 or not origin_secret.isascii() or not all(c.isalnum() or c in '_-' for c in origin_secret):

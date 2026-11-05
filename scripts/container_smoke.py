@@ -39,10 +39,12 @@ def main():
             with app_env.open("a") as handle:
                 handle.write("MCP_PUBLIC_URL=https://chatgpt.obsidian.test\nMCP_ORIGIN_SECRET=" + origin_secret + "\n")
             app_env.chmod(0o600)
-            docker("run", "-d", "--name", app, "--network", network, "--network-alias", "app", "--read-only", "--cap-drop", "ALL",
-                   "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "--security-opt", "no-new-privileges:true",
-                   "--env-file", str(app_env), "--mount", f"type=volume,source={volume},target=/data",
-                   "--mount", f"type=bind,source={override},target=/deployment/compose.override.yaml", IMAGE)
+            def start_app():
+                docker("run", "-d", "--name", app, "--network", network, "--network-alias", "app", "--read-only", "--cap-drop", "ALL",
+                       "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "--security-opt", "no-new-privileges:true",
+                       "--env-file", str(app_env), "--mount", f"type=volume,source={volume},target=/data",
+                       "--mount", f"type=bind,source={override},target=/deployment/compose.override.yaml", IMAGE)
+            start_app()
             repo = Path(__file__).resolve().parents[1]
             nginx_image = "obsidian-mcp-gateway-ci:test"
             docker("run", "-d", "--name", gateway, "--network", network, "--read-only", "--user", "568:568", "--cap-drop", "ALL",
@@ -56,7 +58,7 @@ def main():
 
             def request(path, data=None, token=None, *, direct=False, host=None, origin=True, marker=None):
                 headers = {"Host": host or ("chatgpt.obsidian.test" if direct else "obsidian.test"), "Accept": "application/json, text/event-stream"}
-                if direct and origin:
+                if origin:
                     headers["X-Pangolin-Origin"] = origin_secret
                 if marker:
                     headers["X-Obsidian-Connection"] = marker
@@ -142,7 +144,30 @@ print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['i
             assert docker("inspect", "--format", "{{.HostConfig.ReadonlyRootfs}}", worker) == "true"
             docker("exec", app, "python", "-c", "from state import State;State('/data').revoke_client('" + credentials["id"] + "')")
             assert request("/mcp", rpc, credentials["token"])[0] == 401
-            print("Docker smoke passed: separate OAuth ingress, Host/header spoof rejection, Nginx proxy, non-root app, scoped MCP read, worker authentication, read-only mount and immediate revocation.")
+            # Reuse the same public host and port, preserving admin sessions,
+            # while the exact machine paths switch to OAuth-only protection.
+            docker("rm", "--force", app)
+            app_env.write_text(app_env.read_text().replace("MCP_PUBLIC_URL=https://chatgpt.obsidian.test", "MCP_PUBLIC_URL=https://obsidian.test"))
+            start_app()
+            deadline = time.monotonic() + 45
+            while True:
+                try:
+                    if request("/healthz")[0] == 200:
+                        break
+                except (OSError, urllib.error.URLError):
+                    pass
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Shared-origin application did not become ready")
+                time.sleep(0.25)
+            assert request("/login")[0] == 200
+            assert request("/.well-known/oauth-authorization-server", origin=False)[0] == 403
+            status, body = request("/.well-known/oauth-protected-resource/mcp")
+            assert status == 200 and json.loads(body)["resource"] == "https://obsidian.test/mcp"
+            assert request("/mcp", rpc, credentials["token"])[0] == 401
+            status, body = request("/register", {"client_name": "Synthetic ChatGPT", "redirect_uris": ["https://chatgpt.com/connector/oauth/synthetic-container"], "token_endpoint_auth_method": "none", "grant_types": ["authorization_code"], "response_types": ["code"]})
+            assert status == 201, (status, body)
+            assert request("/healthz", direct=True, host="obsidian.test", marker="legacy")[0] == 404
+            print("Docker smoke passed: same-origin admin/OAuth routing, optional separate OAuth ingress, Host/header spoof rejection, Nginx proxy, non-root app, scoped MCP read, worker authentication, read-only mount and immediate revocation.")
     finally:
         for name in (gateway, app, worker):
             docker("rm", "--force", name, check=False)

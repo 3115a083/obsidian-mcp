@@ -52,7 +52,7 @@ class RealBrowserTests(unittest.TestCase):
         port = listener.getsockname()[1]
         self.origin = f"https://localhost:{port}"
         settings = settings_for(root, self.origin)
-        self.direct_origin = f'https://127.0.0.1:{port}'
+        self.direct_origin = self.origin
         self.origin_secret = 'synthetic-browser-origin-' + 'x' * 48
         settings = replace(settings, mcp_public_url=self.direct_origin, mcp_origin_secret=self.origin_secret)
         self.application = create_app(settings, oauth_transport=github_transport())
@@ -81,7 +81,7 @@ class RealBrowserTests(unittest.TestCase):
             browser = playwright.chromium.launch()
             try:
                 context = browser.new_context(ignore_https_errors=True, extra_http_headers={
-                    'X-Obsidian-Connection': 'direct', 'X-Pangolin-Origin': self.origin_secret})
+                    'X-Obsidian-Connection': 'legacy', 'X-Pangolin-Origin': self.origin_secret})
                 registration = context.request.post(self.direct_origin + '/register', data={
                     'client_name': 'Synthetic browser', 'redirect_uris': [callback],
                     'token_endpoint_auth_method': 'none', 'grant_types': ['authorization_code'],
@@ -99,7 +99,8 @@ class RealBrowserTests(unittest.TestCase):
                         headers={**{key: value for key, value in response.headers.items()
                                     if key not in ('content-length', 'location')}, 'content-type': 'text/html'},
                         body='<a id="' + link_id + '" href="' + target + '">Continue</a>')
-                page.route(self.direct_origin + '/consent', lambda route: redirect_boundary(route, 'provider-start'))
+                page.route(lambda url: urlsplit(url).path == '/consent',
+                    lambda route: redirect_boundary(route, 'provider-start') if route.request.method == 'POST' else route.continue_())
                 page.route(self.direct_origin + '/auth/mcp/callback?**', lambda route: redirect_boundary(route, 'client-return'))
                 def github_redirect(route):
                     query = parse_qs(urlsplit(route.request.url).query)

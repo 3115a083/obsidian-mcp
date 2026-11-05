@@ -19,7 +19,7 @@ from app import create_app
 from connection import DirectAccessGuard
 from settings import Settings
 from state import State
-from tests.support import github_transport, settings_for
+from tests.support import github_transport, login, settings_for
 
 ORIGIN = 'https://chatgpt.obsidian.test'
 SECRET = 'synthetic-origin-secret-' + 'x' * 48
@@ -28,10 +28,17 @@ REDIRECT = 'https://chatgpt.com/connector/oauth/synthetic-obsidian'
 
 
 class DirectConnectionTests(unittest.TestCase):
+    origin = ORIGIN
+    marker = "direct"
+
+    @property
+    def headers(self):
+        return {**HEADERS, "X-Obsidian-Connection": self.marker}
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.settings = replace(settings_for(self.temp.name), mcp_public_url=ORIGIN, mcp_origin_secret=SECRET)
+        self.settings = replace(settings_for(self.temp.name), mcp_public_url=self.origin, mcp_origin_secret=SECRET)
         self.store = State(self.settings.data_dir)
         config = self.store.prepare_vaults([{'name': 'memory', 'label': 'Synthetic memory',
             'directory': '/srv/obsidian/vaults/example'}], self.settings.vault_parent)
@@ -40,7 +47,7 @@ class DirectConnectionTests(unittest.TestCase):
         self.app = create_app(self.settings, state=self.store, oauth_transport=github_transport())
 
     def client(self):
-        return TestClient(self.app, base_url=ORIGIN, headers=HEADERS)
+        return TestClient(self.app, base_url=self.origin, headers=self.headers)
 
     def rpc(self, client, method='tools/list', token=None, params=None):
         headers = {'Accept': 'application/json, text/event-stream'}
@@ -70,15 +77,15 @@ class DirectConnectionTests(unittest.TestCase):
     def test_metadata_and_challenge_use_the_direct_origin(self):
         with self.client() as client:
             resource = client.get('/.well-known/oauth-protected-resource/mcp').json()
-            self.assertEqual(resource['resource'], ORIGIN + '/mcp')
+            self.assertEqual(resource['resource'], self.origin + '/mcp')
             metadata = client.get('/.well-known/oauth-authorization-server').json()
-            self.assertEqual(metadata['issuer'], ORIGIN + '/')
+            self.assertEqual(metadata['issuer'], self.origin + '/')
             self.assertIn('S256', metadata['code_challenge_methods_supported'])
             for key in ('authorization_endpoint', 'token_endpoint', 'registration_endpoint'):
-                self.assertTrue(metadata[key].startswith(ORIGIN + '/'), metadata)
+                self.assertTrue(metadata[key].startswith(self.origin + '/'), metadata)
             response = self.rpc(client)
             self.assertEqual(response.status_code, 401)
-            self.assertIn(ORIGIN, response.headers['www-authenticate'])
+            self.assertIn(self.origin, response.headers['www-authenticate'])
 
     def test_legacy_tokens_and_browser_cookies_cannot_authenticate_direct_mcp(self):
         with self.client() as client:
@@ -127,26 +134,26 @@ class DirectConnectionTests(unittest.TestCase):
             challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
             response = client.get('/authorize', params={'client_id': registration['client_id'],
                 'redirect_uri': REDIRECT, 'response_type': 'code', 'state': 'client-state',
-                'code_challenge': challenge, 'code_challenge_method': 'S256', 'resource': ORIGIN + '/mcp'}, follow_redirects=False)
+                'code_challenge': challenge, 'code_challenge_method': 'S256', 'resource': self.origin + '/mcp'}, follow_redirects=False)
             self.assertIn(response.status_code, (302, 303), response.text)
             consent = client.get(response.headers['location'])
             fields = {name: re.search(r'name="' + name + r'"\s+value="([^"]+)"', consent.text).group(1)
                       for name in ('txn_id', 'csrf_token')}
             # A different browser cannot approve a consent page it did not open.
-            stranger = TestClient(self.app, base_url=ORIGIN, headers=HEADERS)
+            stranger = TestClient(self.app, base_url=self.origin, headers=self.headers)
             self.assertEqual(stranger.post('/consent', data={**fields, 'action': 'approve'}).status_code, 403)
             stranger.close()
-            response = client.post('/consent', data={**fields, 'action': 'approve'}, headers={'Origin': ORIGIN}, follow_redirects=False)
+            response = client.post('/consent', data={**fields, 'action': 'approve'}, headers={'Origin': self.origin}, follow_redirects=False)
             self.assertIn(response.status_code, (302, 303), response.text)
             upstream = parse_qs(urlsplit(response.headers['location']).query)
-            self.assertEqual(upstream['redirect_uri'], [ORIGIN + '/auth/mcp/callback'])
+            self.assertEqual(upstream['redirect_uri'], [self.origin + '/auth/mcp/callback'])
             response = client.get('/auth/mcp/callback', params={'state': upstream['state'][0], 'code': 'synthetic-code'}, follow_redirects=False)
             self.assertIn(response.status_code, (302, 303), response.text)
             returned = parse_qs(urlsplit(response.headers['location']).query)
             self.assertEqual(returned['state'], ['client-state'])
             data = {'grant_type': 'authorization_code', 'client_id': registration['client_id'],
                 'code': returned['code'][0], 'redirect_uri': REDIRECT, 'code_verifier': verifier,
-                'resource': ORIGIN + '/mcp'}
+                'resource': self.origin + '/mcp'}
             invalid = client.post('/token', data={**data, 'code_verifier': 'wrong-' + verifier})
             self.assertIn(invalid.status_code, (400, 401))
             token = client.post('/token', data=data)
@@ -155,19 +162,44 @@ class DirectConnectionTests(unittest.TestCase):
             self.assertEqual(client.post('/token', data=data).status_code, 401)
 
 
+class SharedOriginConnectionTests(DirectConnectionTests):
+    origin = 'https://obsidian.test'
+    marker = 'legacy'
+
+    def test_routes_require_origin_and_marker_and_never_expose_admin(self):
+        with self.client() as client:
+            self.assertEqual(client.get('/healthz').status_code, 200)
+            self.assertEqual(client.get('/login').status_code, 200)
+            self.assertEqual(client.get('/admin/', follow_redirects=False).status_code, 303)
+            self.assertEqual(client.get('/admin/session').status_code, 401)
+            for path in ('/mcp-admin', '/authorize-admin', '/.well-known/admin', '/auth/mcp/callback-extra'):
+                self.assertEqual(client.get(path).status_code, 404, path)
+            self.assertEqual(client.get('/healthz', headers={'X-Obsidian-Connection': 'direct'}).status_code, 404)
+            client.headers.pop('X-Pangolin-Origin')
+            self.assertEqual(client.get('/login').status_code, 200)
+            self.assertEqual(client.get('/.well-known/oauth-authorization-server').status_code, 403)
+
+    def test_legacy_tokens_and_browser_cookies_cannot_authenticate_direct_mcp(self):
+        with self.client() as client:
+            self.assertEqual(login(client).status_code, 200)
+            self.assertIn('omcp_session', client.cookies)
+            for token in (None, 'forged-token', self.static):
+                self.assertEqual(self.rpc(client, token=token).status_code, 401)
+
+
 class ConnectionSettingsTests(unittest.TestCase):
     def test_opt_in_is_complete_and_separate(self):
         env = {'PUBLIC_URL': 'https://admin.test', 'GITHUB_OWNER_ID': '12345',
                'GITHUB_CLIENT_ID': 'synthetic', 'GITHUB_CLIENT_SECRET': 'synthetic'}
         self.assertEqual(Settings.load(env).mcp_public_url, '')
         for changes in ({'MCP_PUBLIC_URL': ORIGIN}, {'MCP_ORIGIN_SECRET': SECRET},
-                        {'MCP_PUBLIC_URL': env['PUBLIC_URL'], 'MCP_ORIGIN_SECRET': SECRET},
                         {'MCP_PUBLIC_URL': 'http://mcp.test', 'MCP_ORIGIN_SECRET': SECRET},
                         {'MCP_PUBLIC_URL': ORIGIN + '/mcp', 'MCP_ORIGIN_SECRET': SECRET},
                         {'MCP_PUBLIC_URL': ORIGIN, 'MCP_ORIGIN_SECRET': 'short'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 Settings.load({**env, **changes})
         self.assertEqual(Settings.load({**env, 'MCP_PUBLIC_URL': ORIGIN, 'MCP_ORIGIN_SECRET': SECRET}).mcp_public_url, ORIGIN)
+        self.assertEqual(Settings.load({**env, 'MCP_PUBLIC_URL': env['PUBLIC_URL'], 'MCP_ORIGIN_SECRET': SECRET}).mcp_public_url, env['PUBLIC_URL'])
 
     def test_disabled_connection_rejects_direct_marker(self):
         with tempfile.TemporaryDirectory() as directory:

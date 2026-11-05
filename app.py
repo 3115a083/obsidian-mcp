@@ -20,7 +20,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Host, Mount, Route
 
 from auth import ClientTokenVerifier, OwnerGitHubProvider
-from connection import DirectAccessGuard, IngressFence
+from connection import DirectAccessGuard, IngressFence, SharedOriginRouter
 from settings import Settings
 from state import State
 from web import web_routes
@@ -121,9 +121,10 @@ def create_app(settings=None, *, state=None, oauth_transport=None, worker_transp
         return app
 
     direct.custom_route('/healthz', methods=['GET'])(health)
+    shared_origin = settings.mcp_public_url == settings.public_url
     direct_app = direct.http_app(path='/mcp', stateless_http=True, json_response=True,
         allowed_hosts=[urlsplit(settings.mcp_public_url).hostname], allowed_origins=[settings.mcp_public_url],
-        middleware=[Middleware(IngressFence, entry='direct'),
+        middleware=[Middleware(IngressFence, entry='legacy' if shared_origin else 'direct'),
                     Middleware(DirectAccessGuard, secret=settings.mcp_origin_secret,
                                state_dir=settings.data_dir / 'oauth-chatgpt')])
 
@@ -132,10 +133,11 @@ def create_app(settings=None, *, state=None, oauth_transport=None, worker_transp
         async with inner.lifespan(app), direct_app.lifespan(direct_app):
             yield
 
-    combined = Starlette(routes=[
+    hosts = ([Host(urlsplit(settings.public_url).hostname,
+                   app=SharedOriginRouter(admin=app, oauth=direct_app))] if shared_origin else [
         Host(urlsplit(settings.mcp_public_url).hostname, app=direct_app),
-        Host(urlsplit(settings.public_url).hostname, app=app),
-    ], lifespan=lifespan)
+        Host(urlsplit(settings.public_url).hostname, app=app)])
+    combined = Starlette(routes=hosts, lifespan=lifespan)
     combined.state.store, combined.state.auth, combined.state.browser_github = state, auth, browser_github
     combined.state.direct_auth = direct_auth
     return combined

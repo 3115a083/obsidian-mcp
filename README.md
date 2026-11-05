@@ -2,11 +2,11 @@
 
 Private, read-only Obsidian integration with one GitHub login, a configuration GUI and separate vault workers. Built for a Linux Docker host such as TrueNAS with Newt in host networking.
 
-**Version 2.1.0 adds a separate, opt-in ChatGPT OAuth connection. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
+**Version 2.1.0 adds an opt-in ChatGPT OAuth connection on the existing domain. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
 
 ## Direct ChatGPT connection
 
-Use the [ChatGPT setup guide](docs/CHATGPT.md) for a separate HTTPS MCP origin with GitHub OAuth, automatic client registration and proxy origin authentication. ChatGPT needs only the MCP URL and OAuth login. The existing Pangolin-protected administration stays on its original resource. Reuse the same GitHub OAuth App by adding the new exact callback URL. This mode accepts the configured owner and all explicitly shared vaults, not legacy scoped client tokens.
+Use the [ChatGPT setup guide](docs/CHATGPT.md) to connect the existing domain at `/mcp` using GitHub OAuth and automatic client registration. `/admin/` remains on the same domain and gateway port, behind its existing Pangolin login. Only exact documented OAuth/MCP routes bypass the proxy login and use application OAuth instead. Reuse the same GitHub OAuth App and existing callbacks. This mode accepts the configured owner and all explicitly shared vaults; legacy scoped tokens do not authenticate its `/mcp` endpoint. An optional separate-origin mode preserves unchanged bridge clients.
 
 ## What changes in version 2
 
@@ -54,7 +54,7 @@ Authorization: Bearer <scoped app token>
 
 The first two authenticate to Pangolin; the last authorizes access to selected vaults in this app. Do not confuse these with GitHub OAuth credentials. No credential is embedded in a URL. Redirects are deliberately not followed so headers cannot leak to another origin.
 
-**For a direct cloud ChatGPT connection use the separate OAuth origin described in [CHATGPT.md](docs/CHATGPT.md).** The original bridge connection below still needs Pangolin headers. Changing the server cannot add a header to a request that has already been rejected by Pangolin. On the original protected origin use the bridge with a compatible local client or a correctly associated private Secure MCP Tunnel. See [the connection guide](docs/CONNECTIONS.md) and [German Pangolin setup guide](docs/PANGOLIN-DE.md). This is an implemented bridge path, not a claim of live OpenAI account/tunnel availability.
+**For a direct cloud ChatGPT connection use the OAuth mode described in [CHATGPT.md](docs/CHATGPT.md).** The original bridge connection below still needs Pangolin headers. Changing the server cannot add a header to a request that has already been rejected by Pangolin. On the original protected origin use the bridge with a compatible local client or a correctly associated private Secure MCP Tunnel. See [the connection guide](docs/CONNECTIONS.md) and [German Pangolin setup guide](docs/PANGOLIN-DE.md). This is an implemented bridge path, not a claim of live OpenAI account/tunnel availability.
 
 ## Add or change vaults
 
