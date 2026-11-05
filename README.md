@@ -56,11 +56,11 @@ Authorization: Bearer <scoped app token>
 
 The first two authenticate to Pangolin; the last authorizes access to selected vaults in this app. Do not confuse these with GitHub OAuth credentials. No credential is embedded in a URL. Redirects are deliberately not followed so headers cannot leak to another origin.
 
-**A normal cloud ChatGPT MCP connection cannot be assumed to send arbitrary Pangolin headers.** Changing the server cannot add a header to a request that has already been rejected by Pangolin. Use the bridge with a compatible local client or a correctly associated private Secure MCP Tunnel. See [the connection guide](docs/CONNECTIONS.md). This is an implemented bridge path, not a claim of live OpenAI account/tunnel availability.
+**A normal cloud ChatGPT MCP connection cannot be assumed to send arbitrary Pangolin headers.** Changing the server cannot add a header to a request that has already been rejected by Pangolin. Use the bridge with a compatible local client or a correctly associated private Secure MCP Tunnel. See [the connection guide](docs/CONNECTIONS.md) and [German Pangolin setup guide](docs/PANGOLIN-DE.md). This is an implemented bridge path, not a claim of live OpenAI account/tunnel availability.
 
 ## Add or change vaults
 
-In `/admin/`, choose **Vault hinzufügen** and enter a short name, display label and an existing absolute directory under `VAULT_PARENT`. Save, then have Dockge re-read and deploy the stack including its override. Remove orphaned vault workers there when removing shares. No source-code or GitHub OAuth configuration changes are needed.
+In `/admin/`, choose **Vault hinzufügen** and enter a short name, display label and an existing absolute directory under `VAULT_PARENT`. Save, then use the read-only command field and copy button under **Gespeicherte Konfiguration anwenden**. Run the command on the Docker host from this stack directory, using the same Compose project name as Dockge. It validates both Compose files before applying saved changes and removes orphaned services in that project. It does not pull new images or execute anything inside the app. Alternatively, have Dockge re-read and deploy the stack including its override. Remove orphaned vault workers there when removing shares. No source-code or GitHub OAuth configuration changes are needed.
 
 The app itself has no vault filesystem mount. Each worker gets one selected directory and its own credential. Workers share a private internal backplane, so this is filesystem/credential isolation rather than separate per-vault networks. Workers publish no host ports.
 
