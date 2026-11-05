@@ -19,4 +19,5 @@ LABEL org.opencontainers.image.source="https://github.com/3115a083/obsidian-mcp"
 # Official image currently contains fixed curl/brotli findings. Apply distro
 # security updates, scan this exact result and publish an immutable run tag.
 RUN apk upgrade --no-cache
+COPY nginx.conf /etc/nginx/nginx.conf
 USER 568:568

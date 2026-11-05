@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import subprocess
 import tempfile
 import time
@@ -12,8 +13,68 @@ import urllib.request
 IMAGE = "obsidian-mcp-ci:test"
 
 
-def docker(*arguments, check=True):
-    return subprocess.run(["docker", *arguments], check=check, capture_output=True, text=True).stdout.strip()
+def docker(*arguments, check=True, environment=None):
+    return subprocess.run(["docker", *arguments], check=check, capture_output=True, text=True,
+                          env=environment).stdout.strip()
+
+
+def recovery_smoke():
+    """A failed real bind mount cannot prevent a base-only admin start."""
+    identity = 'omcp-recovery-' + secrets.token_hex(6)
+    repo = Path(__file__).resolve().parents[1]
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        shutil.copyfile(repo / 'compose.yaml', root / 'compose.yaml')
+        (root / 'data').mkdir(mode=0o700)
+        override = root / 'compose.override.yaml'
+        missing = root / 'missing-vault'
+        override.write_text(json.dumps({'services': {'vault-broken': {
+            'image': IMAGE, 'command': ['python', '-c', 'pass'],
+            'volumes': [{'type': 'bind', 'source': str(missing), 'target': '/vault',
+                         'read_only': True, 'bind': {'create_host_path': False}}]}}}))
+        override.chmod(0o600)
+        uid, gid = os.getuid() or 568, os.getgid() or 568
+        env = root / '.env'
+        env.write_text('MCP_IMAGE=' + IMAGE + '\nMCP_GATEWAY_IMAGE=obsidian-mcp-gateway-ci:test\n'
+            'PUBLIC_URL=https://recovery.test\nGITHUB_CLIENT_ID=synthetic-ci-client\n'
+            'GITHUB_CLIENT_SECRET=synthetic-ci-secret\nGITHUB_OWNER_ID=12345\n'
+            'VAULT_PARENT=/srv/obsidian/vaults\nMCP_GATEWAY_PORT=0\n'
+            f'MCP_UID={uid}\nMCP_GID={gid}\n')
+        env.chmod(0o600)
+        docker('run', '--rm', '--network', 'none', '--user', '0:0',
+            '--mount', f'type=bind,source={root / "data"},target=/data',
+            '--mount', f'type=bind,source={override},target=/override', IMAGE,
+            'python', '-c', f"import os;os.chown('/data',{uid},{gid});os.chown('/override',{uid},{gid})")
+
+        def compose(*args, check=True):
+            return subprocess.run(['docker', 'compose', '-p', identity, *args], cwd=root,
+                                  check=check, capture_output=True, text=True)
+        try:
+            failed = compose('-f', 'compose.yaml', '-f', 'compose.override.yaml',
+                             'up', '-d', 'vault-broken', check=False)
+            assert failed.returncode != 0 and not missing.exists(), 'Missing bind source must fail without being created'
+            # Exact recovery command from the UI, with a private test project.
+            compose('-f', 'compose.yaml', 'up', '-d', 'app', 'gateway')
+            address = compose('-f', 'compose.yaml', 'port', 'gateway', '8080').stdout.strip()
+            deadline = time.monotonic() + 45
+            while True:
+                try:
+                    request = urllib.request.Request('http://' + address + '/login', headers={'Host': 'recovery.test'})
+                    with urllib.request.urlopen(request, timeout=3) as response:
+                        if response.status == 200:
+                            break
+                except (OSError, urllib.error.URLError):
+                    pass
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Admin recovery after failed vault mount did not become ready')
+                time.sleep(0.25)
+            assert override.exists() and 'vault-broken' in override.read_text()
+            assert (root / 'data' / 'master.key').exists()
+            assert not missing.exists()
+            print('Recovery smoke passed: failed bind mount, independent admin startup, packaged gateway configuration and preserved state.')
+        finally:
+            compose('-f', 'compose.yaml', '-f', 'compose.override.yaml', 'down', '--remove-orphans', check=False)
+
 
 
 def main():
@@ -37,19 +98,20 @@ def main():
             app_env = root / "app.env"
             app_env.write_text("MCP_IMAGE=obsidian-mcp-ci:test\nMCP_GATEWAY_IMAGE=obsidian-mcp-gateway-ci:test\nPUBLIC_URL=https://obsidian.test\nGITHUB_CLIENT_ID=synthetic-ci-client\nGITHUB_CLIENT_SECRET=synthetic-ci-secret\nGITHUB_OWNER_ID=12345\nVAULT_PARENT=/srv/obsidian/vaults\n")
             with app_env.open("a") as handle:
-                handle.write("MCP_PUBLIC_URL=https://chatgpt.obsidian.test\nMCP_ORIGIN_SECRET=" + origin_secret + "\n")
+                handle.write("MCP_PUBLIC_URL=https://chatgpt.obsidian.test\n")
             app_env.chmod(0o600)
             def start_app():
                 docker("run", "-d", "--name", app, "--network", network, "--network-alias", "app", "--read-only", "--cap-drop", "ALL",
                        "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "--security-opt", "no-new-privileges:true",
-                       "--env-file", str(app_env), "--mount", f"type=volume,source={volume},target=/data",
-                       "--mount", f"type=bind,source={override},target=/deployment/compose.override.yaml", IMAGE)
+                       "--env-file", str(app_env), "--env", "MCP_ORIGIN_SECRET",
+                       "--mount", f"type=volume,source={volume},target=/data",
+                       "--mount", f"type=bind,source={override},target=/deployment/compose.override.yaml", IMAGE,
+                       environment={**os.environ, 'MCP_ORIGIN_SECRET': origin_secret})
             start_app()
             repo = Path(__file__).resolve().parents[1]
             nginx_image = "obsidian-mcp-gateway-ci:test"
             docker("run", "-d", "--name", gateway, "--network", network, "--read-only", "--user", "568:568", "--cap-drop", "ALL",
                    "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "-p", "127.0.0.1::8080", "-p", "127.0.0.1::8081", "--entrypoint", "nginx",
-                   "--mount", f"type=bind,source={repo / 'nginx.conf'},target=/etc/nginx/nginx.conf,readonly",
                    nginx_image, "-c", "/etc/nginx/nginx.conf", "-g", "daemon off;")
             address = docker("port", gateway, "8080/tcp").splitlines()[0]
             endpoint = "http://" + address
@@ -178,3 +240,4 @@ print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['i
 
 if __name__ == "__main__":
     main()
+    recovery_smoke()

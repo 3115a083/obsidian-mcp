@@ -1,6 +1,7 @@
 *
 !Dockerfile
 !requirements.txt
+!nginx.conf
 !app.py
 !auth.py
 !bridge.py

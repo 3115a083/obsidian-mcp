@@ -11,7 +11,9 @@ Eine zusätzliche Domain ist nicht erforderlich. Auf den exakt festgelegten MCP-
 
 ## 1. Dockge
 
-Nach Veröffentlichung zuerst die geprüften Deployment-Dateien einschließlich `compose.yaml` und der eingebundenen `nginx.conf` übernehmen. Bestehende `.env`, `data/` und `compose.override.yaml` erhalten. Danach beide passenden Images in Dockge ziehen und neu bereitstellen. Ein Image-Update allein ergänzt keine neuen Compose-Variablen.
+Nach Veröffentlichung zuerst die geprüften Deployment-Dateien einschließlich `compose.yaml` übernehmen. Bestehende `.env`, `data/` und `compose.override.yaml` erhalten. Danach beide passenden Images in Dockge ziehen und neu bereitstellen. Ein Image-Update allein ergänzt keine neuen Compose-Variablen. Das neue Gateway-Image enthält bereits seine Nginx-Konfiguration; ein Host-Mount der Datei entfällt. Die neue Compose erst mit dem zugehörigen veröffentlichten Gateway-Image einsetzen.
+
+`PUBLIC_URL` bezeichnet diese MCP-Anwendung mit ihrer Verwaltung. Sie ist unabhängig von einer separaten Obsidian-Web-/Vault-Adresse. Vaults werden über lokale Serverpfade angebunden. Bei einem fehlgeschlagenen Vault-Mount siehe [RECOVERY.md](RECOVERY.md).
 
 In `.env` dieselbe vorhandene HTTPS-Origin für beide Variablen verwenden:
 

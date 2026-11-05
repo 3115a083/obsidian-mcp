@@ -178,6 +178,26 @@ class BrowserAndOAuthTests(Fixture):
                 response = client.post(path, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
                 self.assertEqual(response.status_code, 401)
 
+    def test_missing_host_directory_does_not_lock_configuration_editor(self):
+        from html import unescape
+        from ui import RECOVERY_COMMAND
+        self.save_vaults([{'name': 'memory', 'label': 'Memory',
+                          'directory': '/srv/obsidian/vaults/misspelled'}])
+        with self.client() as client:
+            self.assertNotIn('id="recovery-command"', client.get('/admin/').text)
+            page = login(client)
+            field = re.search(r'<textarea id="recovery-command" readonly[^>]*>(.*?)</textarea>', page.text)
+            self.assertEqual(unescape(field.group(1)), RECOVERY_COMMAND)
+            self.assertEqual(RECOVERY_COMMAND, 'sudo docker compose -f compose.yaml up -d app gateway')
+            self.assertNotIn('remove-orphans', RECOVERY_COMMAND)
+            response = client.post('/admin/save', headers={'Accept': 'application/json', 'Origin': self.settings.public_url},
+                data={'csrf': client.get('/admin/session').json()['csrf'], 'revision': '1',
+                      'vault_name': 'memory', 'vault_label': 'Memory',
+                      'vault_directory': '/srv/obsidian/vaults/corrected'})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(self.store.config()[1]['vaults'][0]['directory'], '/srv/obsidian/vaults/corrected')
+            self.assertNotIn('misspelled', self.settings.override_file.read_text())
+
     def test_wrong_github_account_and_invalid_state_fail_closed(self):
         with self.client(owner=99999) as client:
             self.assertEqual(login(client).status_code, 403)

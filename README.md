@@ -56,6 +56,10 @@ The first two authenticate to Pangolin; the last authorizes access to selected v
 
 **For a direct cloud ChatGPT connection use the OAuth mode described in [CHATGPT.md](docs/CHATGPT.md).** The original bridge connection below still needs Pangolin headers. Changing the server cannot add a header to a request that has already been rejected by Pangolin. On the original protected origin use the bridge with a compatible local client or a correctly associated private Secure MCP Tunnel. See [the connection guide](docs/CONNECTIONS.md) and [German Pangolin setup guide](docs/PANGOLIN-DE.md). This is an implemented bridge path, not a claim of live OpenAI account/tunnel availability.
 
+## Recover from a bad vault mount
+
+Run `sudo docker compose -f compose.yaml up -d app gateway` from the existing stack directory, with the existing Dockge project name. This starts administration without loading generated vault services. Correct the host directory in `/admin/`, save, then apply both files again. See [RECOVERY.md](docs/RECOVERY.md). Do not delete state, create a replacement empty vault or disable read-only/path-creation safeguards. The gateway configuration is packaged with the matching image; the new base Compose no longer needs a host nginx.conf mount.
+
 ## Add or change vaults
 
 In `/admin/`, choose **Vault hinzufügen** and enter a short name, display label and an existing absolute directory under `VAULT_PARENT`. Save, then use the read-only command field and copy button under **Gespeicherte Konfiguration anwenden**. Run the command on the Docker host from this stack directory, using the same Compose project name as Dockge. It validates both Compose files before applying saved changes and removes orphaned services in that project. It does not pull new images or execute anything inside the app. Alternatively, have Dockge re-read and deploy the stack including its override. Remove orphaned vault workers there when removing shares. No source-code or GitHub OAuth configuration changes are needed.
