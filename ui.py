@@ -3,13 +3,18 @@ import html
 import secrets
 from starlette.responses import HTMLResponse
 
+APPLY_COMMAND = (
+    "sudo docker compose -f compose.yaml -f compose.override.yaml config --quiet && "
+    "sudo docker compose -f compose.yaml -f compose.override.yaml up -d --remove-orphans"
+)
+
 CSS = """
 :root{color-scheme:dark;--bg:#11151b;--panel:#1c232d;--muted:#a9b5c4;--line:#344252;--accent:#9ee5c0}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f2f5f8;font:16px/1.5 system-ui,sans-serif}
 main{max-width:1000px;margin:42px auto;padding:0 24px}h1{font-size:32px;line-height:1.15;margin:8px 0 18px}h2{font-size:21px}
 .muted,small{color:var(--muted)}.tag{text-transform:uppercase;letter-spacing:.1em;font-size:12px;color:var(--accent)}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;margin:20px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.full{grid-column:1/-1}
-label{display:block;font-size:14px}input,select{font:inherit;background:#101720;color:inherit;border:1px solid #526174;border-radius:6px;padding:11px;width:100%;margin-top:6px}
+label{display:block;font-size:14px}input,select,textarea{font:inherit;background:#101720;color:inherit;border:1px solid #526174;border-radius:6px;padding:11px;width:100%;margin-top:6px}textarea{resize:vertical;font-family:monospace}
 input[type=checkbox]{width:auto;margin:0 10px 0 0}input:focus,button:focus,a:focus{outline:2px solid var(--accent);outline-offset:3px}
 small{display:block;margin-top:6px}button,.button{font:inherit;cursor:pointer;background:var(--accent);border:0;color:#13281e;border-radius:6px;padding:10px 16px;text-decoration:none;display:inline-block}
 .secondary{background:transparent;border:1px solid #77879a;color:#f2f5f8}.danger{color:#ffb4b4;border-color:#915757}.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px}
@@ -47,6 +52,17 @@ form.addEventListener('submit',async e=>{
 document.addEventListener('submit',e=>{if(e.target!==form&&dirty&&!confirm('Ungespeicherte Vault-Eingaben verwerfen und fortfahren?'))e.preventDefault();});
 document.addEventListener('click',e=>{const a=e.target.closest('a');if(a&&a.target!=='_blank'&&dirty&&!confirm('Ungespeicherte Vault-Eingaben verwerfen und Seite verlassen?'))e.preventDefault();});
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
+document.getElementById('copy-apply').addEventListener('click',async()=>{
+ const field=document.getElementById('apply-command');
+ const status=document.getElementById('copy-status');
+ try{
+  await navigator.clipboard.writeText(field.value);
+  status.textContent='Kopiert. Im Stack-Verzeichnis auf dem TrueNAS-Host ausführen. Nur gespeicherte Änderungen werden angewendet.';
+ }catch(error){
+  field.focus();field.select();
+  status.textContent='Automatisches Kopieren nicht möglich. Markierten Befehl manuell kopieren.';
+ }
+});
 """
 
 
@@ -95,6 +111,8 @@ def dashboard(settings, state, csrf, notice="", status=200, draft=None, revision
     out += '<div id="vaults">' + ''.join(vault_row(v, settings.vault_parent) for v in config['vaults']) + '</div>'
     out += '<div class="actions"><button class="secondary" type="button" id="add-vault">+ Vault hinzufügen</button><button type="submit">Konfiguration speichern</button></div><p id="save-status" class="notice" role="status" hidden></p><p class="muted">Danach in Dockge neu einlesen und deployen. Entfernte Dienste ebenfalls entfernen. Die GUI ruft keinen Docker-Socket auf. <a href="/admin/" target="_blank" rel="noopener">Aktuellen Stand in zweitem Tab öffnen</a>.</p></form>'
     out += '<template id="vault-template">' + vault_row({}, settings.vault_parent) + '</template>'
+    out += '<section class="panel"><h2>Gespeicherte Konfiguration anwenden</h2><p>Erst speichern. Dann auf dem TrueNAS-Host per SSH in das Dockge-Stack-Verzeichnis wechseln, das <code>compose.yaml</code>, <code>compose.override.yaml</code> und <code>.env</code> enthält. Dort diesen Befehl ausführen:</p><label for="apply-command">Befehl für die TrueNAS-Shell</label><textarea id="apply-command" readonly rows="5" spellcheck="false">' + esc(APPLY_COMMAND) + '</textarea><div class="actions"><button type="button" id="copy-apply">Befehl kopieren</button></div><p id="copy-status" role="status" aria-live="polite"></p><small>Prüft die Compose-Konfiguration und startet oder aktualisiert die Dienste. Entfernt verwaiste Dienste dieses Compose-Projekts, auch entfernte Vault-Worker. Verwende denselben Projektnamen wie Dockge. Ungespeicherte Eingaben bleiben hier erhalten. Kein Image-Update, kein Docker-Socket und keine Befehlsausführung durch die App. Alternativ in Dockge neu einlesen und deployen.</small></section>'
+    out += '<section class="panel"><h2>Pangolin sicher einrichten</h2><ol><li>HTTPS-Ressource zur Newt-Site anlegen. Bei Newt im Host-Netz und unverändertem Gateway-Port als Ziel <code>http://127.0.0.1:3061</code> verwenden. Den ganzen Host weiterleiten, keine Pfad-Präfixe entfernen.</li><li>Pangolin-Anmeldung aktiviert lassen. Die Verwaltung unter <code>/admin/</code> verlangt danach zusätzlich den freigegebenen GitHub-Account.</li><li>Für die Bridge in der Ressource einen befristeten Link mit Zugangstoken erstellen. Lokal als <code>PANGOLIN_TOKEN_ID</code> und <code>PANGOLIN_ACCESS_TOKEN</code> hinterlegen. Die Bridge sendet <code>P-Access-Token-Id</code> und <code>P-Access-Token</code>.</li><li>Hier einen auf die benötigten Vaults begrenzten Client-Token erstellen und separat als <code>MCP_CLIENT_TOKEN</code> in der Bridge hinterlegen. Keine Tokens in URLs, Git oder Chat kopieren.</li></ol><details><summary>Warum kein Auth-Bypass für /mcp/?</summary><p>Der Endpunkt lautet <code>/mcp</code>. Eine Pangolin-Regel „Bypass Auth“ entfernt dort die äußere Authentifizierung. Die App verlangt weiterhin einen gültigen MCP-Token; eine Browser-Sitzung genügt nicht. Eine Ausnahme nur für <code>/mcp/</code> ist außerdem keine vollständige OAuth-Einrichtung, da Discovery und OAuth eigene Pfade nutzen. Für diese Installation bleibt Pangolin auch vor MCP aktiv. Die Header-Bridge ermöglicht Zugriff ohne interaktive Pangolin-Anmeldung. Keine pauschalen Ausnahmen für <code>/*</code>, <code>/admin</code> oder <code>/auth</code> einrichten.</p></details><p><a href="https://docs.pangolin.net/manage/access-control/links" target="_blank" rel="noopener noreferrer">Pangolin: Zugangstoken und Header</a></p></section>'
     _, saved = state.config()
     client_draft = client_draft or {"label": "", "days": "30", "vault_ids": []}
     out += '<section class="panel"><h2>Client-Zugriff begrenzen</h2><p>Ein eigener Zugriffstoken pro Verbindung. Nur die ausgewählten Freigaben sind damit erreichbar. Neue oder ersetzte Vaults werden nicht automatisch freigegeben.</p><form method="post" action="/admin/clients">' + token

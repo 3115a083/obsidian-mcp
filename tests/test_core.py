@@ -161,6 +161,23 @@ class BrowserAndOAuthTests(Fixture):
             response = client.post('/mcp', json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
             self.assertEqual(response.status_code, 401, "Browser session cookie must not authorize MCP calls")
 
+    def test_apply_command_is_static_readonly_and_owner_only(self):
+        from html import unescape
+        from ui import APPLY_COMMAND
+        with self.client() as client:
+            self.assertNotIn('id="apply-command"', client.get('/admin/').text)
+            page = login(client)
+            field = re.search(r'<textarea id="apply-command" readonly[^>]*>(.*?)</textarea>', page.text)
+            self.assertIsNotNone(field)
+            self.assertEqual(unescape(field.group(1)), APPLY_COMMAND)
+            self.assertIn('config --quiet && ', APPLY_COMMAND)
+            self.assertIn('up -d --remove-orphans', APPLY_COMMAND)
+            self.assertNotIn(str(self.settings.vault_parent), APPLY_COMMAND)
+            self.assertEqual(page.headers['cache-control'], 'no-store')
+            for path in ('/mcp', '/mcp/'):
+                response = client.post(path, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
+                self.assertEqual(response.status_code, 401)
+
     def test_wrong_github_account_and_invalid_state_fail_closed(self):
         with self.client(owner=99999) as client:
             self.assertEqual(login(client).status_code, 403)

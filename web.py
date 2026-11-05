@@ -99,7 +99,7 @@ def web_routes(settings, state, oauth_transport=None):
                 status=409 if isinstance(error, Conflict) else 400,
                 draft=draft, revision=form.get("revision", "-1"))
         if ajax:
-            return JSONResponse({"revision": revision + 1, "message": "Gespeichert. In Dockge neu einlesen und deployen. Neue Client-Freigaben sind im aktuellen Stand im zweiten Tab verfügbar."})
+            return JSONResponse({"revision": revision + 1, "message": "Gespeichert. Den Befehl unter „Gespeicherte Konfiguration anwenden“ im Stack-Verzeichnis ausführen oder in Dockge neu einlesen und deployen. Neue Client-Freigaben sind im aktuellen Stand im zweiten Tab verfügbar."})
         return RedirectResponse("/admin/?saved=1", status_code=303)
 
     async def issue_client(request):
