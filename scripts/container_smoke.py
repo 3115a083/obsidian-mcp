@@ -1,5 +1,6 @@
 """Synthetic Docker integration test. Removes only its own random test resources."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import secrets
@@ -148,7 +149,7 @@ def main():
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Synthetic application container did not become ready")
                 time.sleep(0.25)
-            assert json.loads(body)["version"] == "2.1.0"
+            assert json.loads(body)["version"] == "2.2.0"
             assert request("/login")[0] == 200
             assert request("/healthz", direct=True)[0] == 200
             assert request("/.well-known/oauth-authorization-server", direct=True, origin=False)[0] == 403
@@ -204,6 +205,59 @@ print(json.dumps({'token':t,'id':i,'worker':s.derive('worker:'+c['vaults'][0]['i
             check = "from pathlib import Path\ntry:\n Path('/vault/new.md').write_text('must fail')\nexcept OSError:\n print('read-only enforced')\nelse:\n raise SystemExit('Vault was writable')"
             assert docker("exec", worker, "python", "-c", check) == "read-only enforced"
             assert docker("inspect", "--format", "{{.HostConfig.ReadonlyRootfs}}", worker) == "true"
+            # Opt in on the same existing share. Exercise real network/tool,
+            # worker and writable bind boundaries, not just local functions.
+            code = """import json
+from pathlib import Path
+from state import State
+from deployment import write_override
+s=State('/data')
+revision,c=s.config()
+c['vaults'][0]['write_paths']=['Project']
+s.save_config(c,revision,lambda data,rev:write_override(Path('/deployment/compose.override.yaml'),data,s,rev))
+t,i=s.issue_client('Synthetic write CI',[c['vaults'][0]['id']],1,[c['vaults'][0]['id']])
+print(json.dumps({'token':t,'id':i}))
+"""
+            write_credentials = json.loads(docker('exec', app, 'python', '-c', code))
+            docker('rm', '--force', worker)
+            docker('run', '--rm', '--network', 'none', '--user', '0:0',
+                   '--mount', f'type=volume,source={notes},target=/vault', IMAGE,
+                   'python', '-c', "import os;os.chown('/vault',568,568)")
+            worker_env.write_text(worker_env.read_text() + 'VAULT_WRITE_PATHS=["Project"]\n')
+            docker('run', '-d', '--name', worker, '--network', network, '--network-alias', 'vault-llm',
+                   '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+                   '--env-file', str(worker_env), '--mount', f'type=volume,source={notes},target=/vault', IMAGE,
+                   'uvicorn', 'worker:app', '--host', '0.0.0.0', '--port', '8000', '--no-access-log')
+
+            def write_call(name, arguments, token=write_credentials['token']):
+                status, payload = request('/mcp', {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                    'params': {'name': name, 'arguments': {'vault': 'llm', **arguments}}}, token)
+                assert status == 200, status
+                return json.loads(payload)['result']
+
+            content = '# Synthetic write\n' + 'Long session paragraph\n' * 5000
+            arguments = {'path': 'Project/Session.md', 'content': content}
+            deadline = time.monotonic() + 20
+            while write_call('create_note', arguments).get('isError'):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Writable worker did not become ready')
+                time.sleep(0.25)
+            assert write_call('create_note', {**arguments, 'path': 'Other/blocked.md'}).get('isError')
+            assert write_call('create_note', arguments, token=credentials['token']).get('isError')
+            old_revision = hashlib.sha256(content.encode()).hexdigest()
+            updated = 'Confirmed synthetic event\n'
+            result = write_call('update_note', {'path': arguments['path'], 'content': updated, 'expected_revision': old_revision})
+            assert not result.get('isError'), result
+            assert write_call('update_note', {'path': arguments['path'], 'content': 'stale', 'expected_revision': old_revision}).get('isError')
+            result = write_call('list_note_versions', {'path': arguments['path']})
+            assert old_revision in json.dumps(result)
+            result = write_call('restore_note', {'path': arguments['path'], 'revision': old_revision,
+                'expected_revision': hashlib.sha256(updated.encode()).hexdigest()})
+            assert not result.get('isError'), result
+            result = write_call('move_note', {'path': arguments['path'], 'destination': 'Project/Archive/Session.md', 'expected_revision': old_revision})
+            assert not result.get('isError'), result
+            docker('exec', app, 'python', '-c', "from state import State;State('/data').revoke_client('" + write_credentials['id'] + "')")
+            assert request('/mcp', rpc, write_credentials['token'])[0] == 401
             docker("exec", app, "python", "-c", "from state import State;State('/data').revoke_client('" + credentials["id"] + "')")
             assert request("/mcp", rpc, credentials["token"])[0] == 401
             # Reuse the same public host and port, preserving admin sessions,

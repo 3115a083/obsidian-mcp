@@ -37,7 +37,7 @@ A local MCP client can start the bridge with this argv-style command configurati
 
 The operator's Docker client must already be able to pull the private image. The bridge has no vault mount and no Docker socket. Its STDIO output belongs only to the MCP client. Do not add a public unauthenticated HTTP listener around it.
 
-Both Pangolin headers accompany every upstream MCP request. The application capability grants read-only tool access to selected immutable share IDs and expires after 1 to 90 days. Its raw value is never committed or logged by this implementation. If Pangolin uses custom header names rather than its documented defaults, adapt the bridge through a reviewed change; do not turn off protection to make it connect.
+Both Pangolin headers accompany every upstream MCP request. The application capability grants access to selected immutable share IDs and expires after 1 to 90 days. It defaults to read-only access. Version 2.2.0 can grant explicit write folders as described in [WRITING.md](WRITING.md). Its raw value is never committed or logged by this implementation. If Pangolin uses custom header names rather than its documented defaults, adapt the bridge through a reviewed change; do not turn off protection to make it connect.
 
 Synthetic integration tests exercise two consecutive authorization boundaries and verify redirects do not forward credentials to a different host. They do not verify your real Pangolin resource or account configuration.
 
@@ -51,7 +51,7 @@ With the official `tunnel-client`, inspect `tunnel-client help quickstart` first
 
 In ChatGPT select **Tunnel** for a custom MCP connection. The bridge itself is a private STDIO service without another browser OAuth exchange; upstream app and Pangolin credentials are already supplied by the bridge. Selecting no extra auth on this private tunnel is not disabling authentication on the public Pangolin resource.
 
-Setup is complete only after the intended workspace lists the tunnel, the client is healthy, the expected four read-only tools appear and a representative allowed-vault read succeeds. Verify a denied vault and token revocation too. Until then this path remains unverified. The app never installs tunnel binaries or creates account resources automatically.
+Setup is complete only after the intended workspace lists the tunnel, the client is healthy, the expected note tools appear and a representative allowed-vault read succeeds. Verify a denied vault and token revocation too. Until then this path remains unverified. The app never installs tunnel binaries or creates account resources automatically.
 
 ## Sources
 

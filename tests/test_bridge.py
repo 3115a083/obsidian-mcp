@@ -40,7 +40,7 @@ class PangolinBridgeTests(unittest.TestCase):
                 async with main.router.lifespan_context(main):
                     async with Client(bridge) as client:
                         tools = await client.list_tools()
-                        self.assertEqual({tool.name for tool in tools}, {"list_vaults", "list_notes", "read_note", "search_notes"})
+                        self.assertEqual({tool.name for tool in tools}, {'list_vaults', 'list_notes', 'read_note', 'search_notes', 'list_note_versions', 'create_note', 'update_note', 'patch_note', 'move_note', 'restore_note'})
                         result = await client.call_tool("list_vaults")
                         self.assertIn("Memory", str(result))
                 self.assertGreaterEqual(len(requests), 2)

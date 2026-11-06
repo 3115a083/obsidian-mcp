@@ -78,13 +78,15 @@ def web_routes(settings, state, oauth_transport=None):
         ajax = "application/json" in request.headers.get("accept", "")
         if not owner(request):
             return JSONResponse({"message": "Sitzung abgelaufen. In einem zweiten Tab erneut anmelden; deine Eingaben bleiben hier erhalten."}, status_code=401) if ajax else login_required()
-        form = await request.form(max_fields=300)
+        form = await request.form(max_fields=350)
         if not form_allowed(request, form):
             if ajax:
                 return JSONResponse({"message": "Formularprüfung abgewiesen. Eingaben bleiben erhalten. In einem zweiten Tab erneut anmelden."}, status_code=403)
             return document('<h1>Anfrage abgewiesen</h1><p>Sitzung oder Formularprüfung ungültig. <a href="/admin/">Verwaltung neu öffnen</a>.</p>', status=403)
         fields = [form.getlist("vault_" + name) for name in ("name", "label", "directory")]
-        draft = [dict(zip(("name", "label", "directory"), items)) for items in zip(*fields)]
+        write_fields = form.getlist("vault_write_paths")
+        fields.append(write_fields if write_fields else ["" for _ in fields[0]])
+        draft = [dict(zip(("name", "label", "directory", "write_paths"), items)) for items in zip(*fields)]
         try:
             if len({len(values) for values in fields}) != 1:
                 raise ValueError("Ungültige Formularfelder")
@@ -108,9 +110,9 @@ def web_routes(settings, state, oauth_transport=None):
         form = await request.form(max_fields=100)
         if not form_allowed(request, form):
             return document('<h1>Anfrage abgewiesen</h1>', status=403)
-        draft = {"label": str(form.get("client_label", "")), "days": str(form.get("days", "")), "vault_ids": form.getlist("vault_id")}
+        draft = {"label": str(form.get("client_label", "")), "days": str(form.get("days", "")), "vault_ids": form.getlist("vault_id"), "write_vault_ids": form.getlist("write_vault_id")}
         try:
-            raw, _ = state.issue_client(draft["label"], draft["vault_ids"], int(draft["days"]))
+            raw, _ = state.issue_client(draft["label"], draft["vault_ids"], int(draft["days"]), draft["write_vault_ids"])
         except ValueError as error:
             return dashboard(settings, state, csrf(request), notice=str(error), status=400, client_draft=draft)
         return dashboard(settings, state, csrf(request), raw_token=raw, client_draft=draft)

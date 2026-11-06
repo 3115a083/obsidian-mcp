@@ -107,7 +107,7 @@ class DirectAccessGuard:
             return await reject(503, 'busy')
         if path != '/mcp' and not self.storage_has_room():
             return await reject(503, 'oauth_storage_budget_exceeded')
-        maximum = 64 * 1024 if path == '/mcp' else 16 * 1024
+        maximum = 8 * 1024 * 1024 if path == '/mcp' else 16 * 1024
         lengths = [v for k, v in headers if k.lower() == b'content-length']
         try:
             if len(lengths) > 1 or lengths and int(lengths[0]) < 0:
