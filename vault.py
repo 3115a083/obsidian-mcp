@@ -312,7 +312,8 @@ class Vault:
         self.require_write(path)
         if not isinstance(old_text, str) or not old_text or not isinstance(new_text, str):
             raise ValueError('Provide a nonempty exact old_text and replacement text')
-        with self.open_note(path) as content:
+        with self.open_note_bytes(path) as data:
+            content = data.decode('utf-8')
             if content.count(old_text) != 1:
                 raise NoteConflict('old_text must occur exactly once. Read the note for an unambiguous edit.')
             updated = content.replace(old_text, new_text, 1)
@@ -368,7 +369,7 @@ class Vault:
                     raise ValueError('Snapshot integrity check failed')
             finally:
                 os.close(fd)
-        content = data.decode('utf-8-sig')
+        content = data.decode('utf-8')
         if expected_revision == 'missing':
             return self.create_note(path, content)
         return self.update_note(path, content, expected_revision)

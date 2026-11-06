@@ -99,6 +99,20 @@ class NoteWritingTests(unittest.TestCase):
         self.assertEqual(sum(result is not None for result in results), 1)
         self.assertIn((self.root / 'Project/A.md').read_text(), ['first', 'second'])
 
+    def test_bom_restore_is_byte_exact_and_existing_snapshot_links_are_rejected(self):
+        content = '\ufeff# Heading\nOriginal\r\n'
+        created = self.vault.create_note('Project/A.md', content)
+        changed = self.vault.patch_note('Project/A.md', 'Original', 'Changed', created['revision'])
+        self.assertTrue((self.root / 'Project/A.md').read_bytes().startswith(b'\xef\xbb\xbf'))
+        self.vault.restore_note('Project/A.md', created['revision'], changed['revision'])
+        self.assertEqual((self.root / 'Project/A.md').read_bytes(), content.encode())
+        snapshot = self.root / '.mcp-history' / (hashlib.sha256(b'Project/A.md').hexdigest() + '-' + created['revision'] + '.md')
+        snapshot.unlink()
+        snapshot.symlink_to(self.root / 'Project/A.md')
+        with self.assertRaises(OSError):
+            self.vault.update_note('Project/A.md', 'blocked', created['revision'])
+        self.assertEqual((self.root / 'Project/A.md').read_bytes(), content.encode())
+
     def test_write_size_and_worker_permission_and_conflict_status(self):
         worker = create_worker(self.root, 'k' * 64, ['Project'])
         headers = {'Authorization': 'Bearer ' + 'k' * 64}
