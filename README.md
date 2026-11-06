@@ -2,11 +2,11 @@
 
 Private Obsidian integration with optional scoped Markdown editing with one GitHub login, a configuration GUI and separate vault workers. Built for a Linux Docker host such as TrueNAS with Newt in host networking.
 
-**Version 2.2.0 adds explicit write folders, revision-checked edits, moves and recoverable note history. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
+**Version 2.2.1 adds a per-vault write checkbox with optional folder limits, revision-checked edits, moves and recoverable note history. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
 
 ## Enable note editing
 
-Existing shares remain read-only until an administrator enters **Erlaubte Schreibordner** for each share and applies the generated Compose configuration. An empty field grants only reads. Enter a relative project folder for assistant memory or `/` for editing the whole selected vault. GitHub owner OAuth uses the current share policy. Legacy client tokens need separately granted write access. See [the writing and update guide](docs/WRITING.md).
+Enable **Schreiben erlauben** on a share and apply the generated Compose configuration to grant writes. An unchecked box keeps it read-only. The optional folder field limits writes to listed relative folders. With the box checked, an empty folder field or `/` grants the whole selected vault. Applying permissions uses existing images and requires no local rebuild. GitHub owner OAuth uses the current share policy. Legacy client tokens need separately granted write access. See [the writing and update guide](docs/WRITING.md).
 
 ## Direct ChatGPT connection
 

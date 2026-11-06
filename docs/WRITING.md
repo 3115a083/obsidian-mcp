@@ -6,8 +6,8 @@ Version 2.2.0 ergänzt sechs Werkzeuge zu den bisherigen vier Lesewerkzeugen. `c
 
 1. Vorher einen geschützten Snapshot der Vaults und der App-Daten erstellen. Für eine Rückkehr die bisherigen App- und Gateway-Image-Digests notieren.
 2. Beide neuen, erfolgreich geprüften Images ziehen und den bestehenden Stack deployen. Die bisherigen Zugangsdaten und OAuth-URLs weiterverwenden.
-3. Die Verwaltung öffnen. In jeder Freigabe gibt es das neue Feld **Erlaubte Schreibordner**.
-4. Für den Gedächtnis-Vault einen relativen Projektordner eintragen, beispielsweise `Projekte/Kampagne`. Ein Eintrag pro Zeile, ohne führenden oder abschließenden Schrägstrich. Für die ganze ausgewählte Vault-Freigabe `/` eintragen. Ein leeres Feld gewährt nur Lesezugriff.
+3. Die Verwaltung öffnen. Oben muss **Version 2.2.1** stehen. In jeder Freigabe den Haken **Schreiben erlauben** setzen. Ohne Haken bleibt der Vault lesend.
+4. Für den ganzen ausgewählten Vault genügt der Haken. Unter **Optional auf Unterordner begrenzen** bei Bedarf einen relativen Projektordner eintragen, beispielsweise `Projekte/Kampagne`. Ein Eintrag pro Zeile, ohne führenden oder abschließenden Schrägstrich. Ein leeres Feld oder `/` erlaubt bei gesetztem Haken den ganzen Vault. Nach einer Rechteänderung die gespeicherte Konfiguration anwenden. Dafür werden vorhandene Images verwendet, ein lokaler Neubau ist nicht erforderlich.
 5. Speichern und den kopierbaren Befehl **Gespeicherte Konfiguration anwenden** im Stack-Verzeichnis ausführen. Dadurch werden Mount und Schreibordner des betreffenden Workers aktualisiert. Das ursprüngliche Vault-Verzeichnis muss bereits existieren. Unterordner für neue Notizen kann das Werkzeug selbst anlegen.
 6. TrueNAS-ACLs müssen dem Worker-UID/GID das Anlegen, Ersetzen und Verschieben von Dateien sowie das Anlegen von `.mcp-history` erlauben. Der Standard ist UID/GID 568. Keine pauschale `chmod 777`-Änderung verwenden.
 7. In ChatGPT die Werkzeuge des bestehenden Plugins aktualisieren. Falls dort weiter nur vier Werkzeuge erscheinen, die Verbindung neu laden beziehungsweise erneut verbinden. Der MCP-Endpunkt bleibt `/mcp`.

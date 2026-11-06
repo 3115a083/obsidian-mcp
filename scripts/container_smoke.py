@@ -149,7 +149,7 @@ def main():
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Synthetic application container did not become ready")
                 time.sleep(0.25)
-            assert json.loads(body)["version"] == "2.2.0"
+            assert json.loads(body)["version"] == "2.2.1"
             assert request("/login")[0] == 200
             assert request("/healthz", direct=True)[0] == 200
             assert request("/.well-known/oauth-authorization-server", direct=True, origin=False)[0] == 403

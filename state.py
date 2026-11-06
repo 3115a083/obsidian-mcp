@@ -97,6 +97,10 @@ class State:
             prefixes = item.get('write_paths', [])
             if isinstance(prefixes, str):
                 prefixes = [line.strip() for line in prefixes.splitlines() if line.strip()]
+            if 'write_enabled' in item:
+                if not isinstance(item['write_enabled'], bool):
+                    raise ValueError('Ungültige Schreibfreigabe')
+                prefixes = (prefixes or ['/']) if item['write_enabled'] else []
             result.append({"id": identity, "name": name, "label": label, "directory": directory,
                            "write_paths": write_paths(prefixes)})
         return {"vaults": result}
