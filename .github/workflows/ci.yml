@@ -108,7 +108,7 @@ jobs:
       - name: Container integration and read-only mounts
         run: python3 scripts/container_smoke.py
       - name: Application image vulnerabilities and secrets
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           version: v0.69.3
           image-ref: obsidian-mcp-ci:test
@@ -118,7 +118,7 @@ jobs:
           ignore-unfixed: false
       - name: Gateway image vulnerabilities
         if: always()
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           version: v0.69.3
           image-ref: obsidian-mcp-gateway-ci:test
@@ -128,7 +128,7 @@ jobs:
           ignore-unfixed: false
       - name: Repository secret scan
         if: always()
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           version: v0.69.3
           scan-type: fs
@@ -165,7 +165,7 @@ jobs:
       - name: Inspect the exact image metadata and all layers before publication
         run: python3 scripts/check_image_boundary.py "$PUBLISH_IMAGE:$PUBLISH_TAG"
       - name: Scan the actual image that will be published
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           version: v0.69.3
           image-ref: ${{ env.PUBLISH_IMAGE }}:${{ env.PUBLISH_TAG }}
@@ -201,7 +201,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Scan the published stable image, not just a fresh rebuild
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           version: v0.69.3
           image-ref: ghcr.io/3115a083/${{ matrix.package }}:stable
