@@ -32,6 +32,10 @@ function changed(){editRevision++;dirty=true;}
 rows.addEventListener('input',changed);
 document.getElementById('add-vault').addEventListener('click',()=>{
  rows.append(document.getElementById('vault-template').content.cloneNode(true));
+ const row=rows.lastElementChild;
+ const key=crypto.randomUUID();
+ row.querySelector('[name=vault_row_key]').value=key;
+ row.querySelector('[name=vault_writable]').value=key;
  rows.lastElementChild.querySelector('input').focus();changed();});
 rows.addEventListener('click',e=>{if(e.target.matches('[data-remove]')&&confirm('Freigabe entfernen? Nach dem Deploy verliert sie ihren Zugriff.')){e.target.closest('.vault').remove();changed();}});
 form.addEventListener('submit',async e=>{
@@ -94,8 +98,12 @@ def vault_row(item, parent):
         out += f'<label{full}>{label}<input name="vault_{key}" value="{esc(item.get(key, ""))}" placeholder="{esc(placeholder)}" autocomplete="off"></label>'
     prefixes = item.get('write_paths', [])
     raw = prefixes if isinstance(prefixes, str) else '\n'.join(prefixes)
-    out += '<label class="full">Erlaubte Schreibordner<textarea name="vault_write_paths" rows="3" spellcheck="false" placeholder="Leer lassen für Lesezugriff">' + esc(raw) + '</textarea></label>'
-    return out + '</div><small>Ein relativer Ordner pro Zeile, ohne abschließenden Schrägstrich. / erlaubt den gesamten Vault. Leer bedeutet nur lesen. Nach dem Speichern die Konfiguration anwenden. Änderungen und Verschiebungen erhalten vorherige Fassungen im Vault-Ordner .mcp-history.</small><div class="actions"><button type="button" class="secondary danger" data-remove>Freigabe entfernen</button></div></section>'
+    writable = item.get('write_enabled', bool(prefixes))
+    key = secrets.token_hex(12)
+    out += '<input type="hidden" name="vault_row_key" value="' + key + '">'
+    out += '<label class="full"><input type="checkbox" name="vault_writable" value="' + key + '"' + (' checked' if writable else '') + '>Schreiben erlauben</label>'
+    out += '<details class="full"' + (' open' if raw and raw != '/' else '') + '><summary>Optional auf Unterordner begrenzen</summary><label>Erlaubte Schreibordner<textarea name="vault_write_paths" rows="3" spellcheck="false" placeholder="Leer bedeutet ganzer Vault, wenn Schreiben erlaubt ist">' + esc(raw) + '</textarea></label><small>Ein relativer Ordner pro Zeile, ohne abschließenden Schrägstrich. / steht für den ganzen Vault.</small></details>'
+    return out + '</div><small>Haken aus bedeutet nur lesen. Nach dem Speichern die Konfiguration in Dockge anwenden. Dafür ist kein lokaler Neubau nötig. Änderungen erhalten vorherige Fassungen in .mcp-history.</small><div class="actions"><button type="button" class="secondary danger" data-remove>Freigabe entfernen</button></div></section>'
 
 
 def dashboard(settings, state, csrf, notice="", status=200, draft=None, revision=None, raw_token=None, client_draft=None):
@@ -105,7 +113,7 @@ def dashboard(settings, state, csrf, notice="", status=200, draft=None, revision
     revision = current_revision if revision is None else revision
     token = csrf_field(csrf)
     out = '<div class="top"><div><div class="tag">Obsidian MCP · Verwaltung</div><h1>Vault-Freigaben</h1></div><form method="post" action="/logout">' + token + '<button class="secondary">Abmelden</button></form></div>'
-    out += '<p class="muted">Eine GitHub-Anmeldung. Getrennte Vault-Dateirechte. Updates über fertige Container-Images.</p>'
+    out += '<p class="muted">Version 2.2.1 · Eine GitHub-Anmeldung. Getrennte Vault-Dateirechte. Updates über fertige Container-Images.</p>'
     if notice:
         out += f'<p role="status" class="notice{" error" if status >= 400 else ""}">{esc(notice)}</p>'
     if raw_token:
@@ -133,5 +141,5 @@ def dashboard(settings, state, csrf, notice="", status=200, draft=None, revision
         if not client['revoked']:
             out += '<form method="post" action="/admin/revoke">' + token + '<input type="hidden" name="client_id" value="' + esc(client['id']) + '"><button class="secondary danger">Widerrufen</button></form>'
         out += '</div>'
-    out += '</section><p class="muted">Version 2.2.0 · Revision ' + str(current_revision) + ' · <a href="/admin/deployment">Erzeugte Konfiguration prüfen</a></p>'
+    out += '</section><p class="muted">Version 2.2.1 · Revision ' + str(current_revision) + ' · <a href="/admin/deployment">Erzeugte Konfiguration prüfen</a></p>'
     return document(out, status=status, script=JS)

@@ -87,9 +87,16 @@ def web_routes(settings, state, oauth_transport=None):
         write_fields = form.getlist("vault_write_paths")
         fields.append(write_fields if write_fields else ["" for _ in fields[0]])
         draft = [dict(zip(("name", "label", "directory", "write_paths"), items)) for items in zip(*fields)]
+        keys = form.getlist('vault_row_key')
+        checked = form.getlist('vault_writable')
+        for item, key in zip(draft, keys):
+            item['write_enabled'] = key in checked
         try:
             if len({len(values) for values in fields}) != 1:
                 raise ValueError("Ungültige Formularfelder")
+            if (keys and (len(keys) != len(draft) or len(set(keys)) != len(keys))
+                    or not set(checked) <= set(keys)):
+                raise ValueError('Ungültige Zuordnung der Schreibfreigaben')
             revision = int(form.get("revision", "-1"))
             config = state.prepare_vaults(draft, settings.vault_parent)
             state.save_config(config, revision,

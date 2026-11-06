@@ -26,7 +26,7 @@ from state import State
 from web import web_routes
 from vault import permits_path
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 
 
 def create_app(settings=None, *, state=None, oauth_transport=None, worker_transport=None):

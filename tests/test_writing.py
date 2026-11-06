@@ -199,6 +199,52 @@ class GatewayWriteTests(unittest.TestCase):
         with state.connect() as db:
             self.assertIn('write_grants', {row['name'] for row in db.execute('PRAGMA table_info(clients)')})
 
+    def test_checkbox_rows_enable_and_disable_without_affecting_other_vaults(self):
+        import re
+        with TestClient(self.app, base_url=self.settings.public_url) as client:
+            page = login(client)
+            csrf = re.search('name="csrf" value="([^"]+)"', page.text).group(1)
+            keys = re.findall('name="vault_row_key" value="([^"]+)"', page.text)[:2]
+            self.assertEqual(len(keys), 2)
+            fields = {'csrf': csrf, 'revision': '1', 'vault_name': ['memory', 'notes'],
+                      'vault_label': ['Memory', 'Notes'],
+                      'vault_directory': [item['directory'] for item in self.items],
+                      'vault_write_paths': ['', ''], 'vault_row_key': keys,
+                      'vault_writable': keys[0]}
+            response = client.post('/admin/save', data=fields, headers={'Origin': self.settings.public_url}, follow_redirects=False)
+            self.assertEqual(response.status_code, 303, response.text)
+            self.assertEqual([v['write_paths'] for v in self.state.config()[1]['vaults']], [['/'], []])
+            # An unchecked browser checkbox is omitted from the POST. Row keys
+            # bind it to the correct vault without shifting later rows.
+            fields.pop('vault_writable')
+            fields['revision'] = '2'
+            response = client.post('/admin/save', data=fields, headers={'Origin': self.settings.public_url}, follow_redirects=False)
+            self.assertEqual(response.status_code, 303, response.text)
+            self.assertEqual([v['write_paths'] for v in self.state.config()[1]['vaults']], [[], []])
+            fields['vault_writable'] = 'unknown-row'
+            fields['revision'] = '3'
+            self.assertEqual(client.post('/admin/save', data=fields, headers={'Origin': self.settings.public_url}).status_code, 400)
+            self.assertEqual(self.state.config()[0], 3)
+
+    def test_checkbox_preserves_saved_custom_folder_and_invalid_checked_draft(self):
+        from ui import vault_row
+        import re
+        html = vault_row(self.state.config()[1]['vaults'][0], self.settings.vault_parent)
+        self.assertRegex(html, 'name="vault_writable" value="[^"]+" checked')
+        self.assertIn('Project</textarea>', html)
+        config = self.state.prepare_vaults([{**self.items[0], 'write_enabled': False}], self.settings.vault_parent)
+        self.assertEqual(config['vaults'][0]['write_paths'], [])
+        with TestClient(self.app, base_url=self.settings.public_url) as client:
+            page = login(client)
+            csrf = re.search('name="csrf" value="([^"]+)"', page.text).group(1)
+            result = client.post('/admin/save', data={'csrf': csrf, 'revision': '1',
+                'vault_name': 'memory', 'vault_label': 'Memory', 'vault_directory': self.items[0]['directory'],
+                'vault_row_key': 'row1', 'vault_writable': 'row1', 'vault_write_paths': '  ../invalid  \n'},
+                headers={'Origin': self.settings.public_url})
+            self.assertEqual(result.status_code, 400)
+            self.assertIn('  ../invalid  \n</textarea>', result.text)
+            self.assertRegex(result.text, 'name="vault_writable" value="[^"]+" checked')
+
 
 if __name__ == '__main__':
     unittest.main()
