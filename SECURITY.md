@@ -1,6 +1,6 @@
 # Security policy
 
-This is public source code for a privately operated, read-only Obsidian integration. Report issues privately to the repository owner. Do not include credentials, vault contents or unredacted logs in issues or pull requests.
+This is public source code for a privately operated Obsidian integration with opt-in scoped writes. Report issues privately to the repository owner. Do not include credentials, vault contents or unredacted logs in issues or pull requests.
 
 ## Trust boundaries
 
@@ -8,7 +8,7 @@ This is public source code for a privately operated, read-only Obsidian integrat
 - Browser administration requires the allowlisted numeric GitHub account ID.
 - Legacy MCP requests require either the central GitHub OAuth flow or an expiring, explicitly scoped app capability token. Direct ChatGPT MCP accepts only owner GitHub OAuth. Owner access covers all explicitly configured shares.
 - The optional STDIO bridge supplies a separate Pangolin resource credential. Run it only inside the operator's trust boundary or behind a correctly associated private Secure MCP Tunnel.
-- Each vault worker mounts one selected directory read-only and accepts only its own internal credential. Workers share an internal Docker backplane. This is filesystem and credential separation, not a claim of one isolated network per vault.
+- Each vault worker mounts one selected directory and accepts only its own internal credential. Shares default to a read-only mount. Explicit write folders switch that share to a writable mount, with path enforcement in both the gateway and worker. A compromised writable worker can modify the entire mounted vault, so prefix checks are application-level restrictions rather than filesystem isolation within that vault. Workers share an internal Docker backplane. This is filesystem and credential separation, not a claim of one isolated network per vault.
 - The app has no vault mount and no Docker socket. It can write its state and the explicitly mounted local Compose override. Treat administration as a server-management privilege: that file takes effect when the operator deploys it.
 
 Host/Docker administrators and a compromised application gateway are trusted with the configured vault access. Container isolation does not protect against a host or kernel compromise. A malicious authorized note is data, not an instruction to alter access controls.
@@ -39,7 +39,7 @@ No production migration or live Pangolin/GitHub/OpenAI-tunnel verification is as
 
 ## Image publication and identity
 
-Public images are downloadable software, not access grants to any running instance. The owner allowlist, scoped app tokens, Pangolin authentication and read-only mounts remain required. Each operator supplies their own credentials and vault mounts at runtime.
+Public images are downloadable software, not access grants to any running instance. The owner allowlist, scoped app tokens, Pangolin authentication and per-share mount restrictions remain required. Each operator supplies their own credentials and vault mounts at runtime.
 
 Image boundary checks inspect metadata and every saved layer, including files deleted by later layers, for baked-in credential variables, runtime state and unexpected application files. Trivy additionally scans the actual publish artifact for recognized secrets and HIGH/CRITICAL vulnerabilities. These checks complement review of the Dockerfile and its build-context allowlist; they do not prove absence of every possible identifying datum.
 
@@ -56,3 +56,13 @@ The shared-origin router dispatches only an exact list of OAuth/MCP paths to the
 Direct OAuth state and JWT keys use separate derivations and storage from existing sessions and legacy OAuth. Both use the same central GitHub App. No state migration or credential reset occurs. Anonymous direct ingress is bounded by a global rate bucket, a tighter registration bucket, eight concurrent requests, 20-second body reads, 16 KiB OAuth / 64 KiB MCP bodies and an independent 32 MiB / 4096-entry OAuth storage budget. Budget exhaustion fails closed and requires operator inspection; this is not automatic state cleanup. Nginx adds a separate request limit. No forwarded client IP is trusted for application limits. These bounds reduce abuse; they do not guarantee availability against a distributed attack or an upstream outage.
 
 The direct server has only discovery, OAuth, health and four read-only tools. In shared-origin mode health remains on the original application. Vault mounts, per-worker credentials, note filtering and explicit configured shares remain unchanged. Disable the new resource for immediate broad revocation. Revoking a legacy client token does not revoke an OAuth connection. See [CHATGPT.md](docs/CHATGPT.md) for setup and rollback.
+
+## Opt-in Markdown writes
+
+Version 2.2.0 migrates existing capability rows with empty write grants. Existing share configuration without write paths stays read-only. Owner OAuth follows the current share write folders. Capability-token write grants snapshot the enabled folders at issuance and are intersected with current policy on every request. Adding folders never widens an existing token. Revocation stops subsequent requests, while an already in-flight operation may finish. Removing permission in the GUI blocks new gateway writes immediately; re-deploy also restricts the worker.
+
+Writes traverse directory descriptors with `O_NOFOLLOW`, reject hidden paths, links and special files, and only accept bounded UTF-8 Markdown. Creates never overwrite a destination. Updates require a SHA-256 revision and publish atomically after saving previous bytes. A vault-wide advisory lock serializes this implementation's writers. Obsidian and other editors do not participate in that lock: a final hash recheck reduces conflict windows but cannot guarantee cross-application compare-and-swap against an external writer. Avoid editing the same note simultaneously from Obsidian and MCP.
+
+History lives inside the writable vault at `.mcp-history`, is excluded from normal MCP inventory/search, and has a 256 MiB write-stop budget. It is sensitive runtime material and must be included in the operator's protected backups. A failed snapshot stops an update. Snapshots are content addressed per relative path. Restore is revision guarded and uses the same current write policy. Moving is copy-first and removes the unchanged source after publication. A crash or concurrent external edit can leave both copies; inspect both before retrying. Backlinks are not automatically rewritten. Source and destination must both be writable.
+
+The container root filesystem stays read-only. No Docker socket or shell execution API is added. TrueNAS ACLs remain an operator responsibility. MCP transport bodies are bounded at 8 MiB to carry JSON-encoded notes with a 2 MiB UTF-8 content limit. OAuth administrative endpoints retain their smaller request limits.

@@ -1,8 +1,12 @@
 # Obsidian MCP
 
-Private, read-only Obsidian integration with one GitHub login, a configuration GUI and separate vault workers. Built for a Linux Docker host such as TrueNAS with Newt in host networking.
+Private Obsidian integration with optional scoped Markdown editing with one GitHub login, a configuration GUI and separate vault workers. Built for a Linux Docker host such as TrueNAS with Newt in host networking.
 
-**Version 2.1.0 adds an opt-in ChatGPT OAuth connection on the existing domain. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
+**Version 2.2.0 adds explicit write folders, revision-checked edits, moves and recoverable note history. Source code is public; running vaults and credentials remain private.** Local tests do not establish that your Pangolin, GitHub account, private registry or OpenAI tunnel is connected.
+
+## Enable note editing
+
+Existing shares remain read-only until an administrator enters **Erlaubte Schreibordner** for each share and applies the generated Compose configuration. An empty field grants only reads. Enter a relative project folder for assistant memory or `/` for editing the whole selected vault. GitHub owner OAuth uses the current share policy. Legacy client tokens need separately granted write access. See [the writing and update guide](docs/WRITING.md).
 
 ## Direct ChatGPT connection
 
@@ -12,7 +16,7 @@ Use the [ChatGPT setup guide](docs/CHATGPT.md) to connect the existing domain at
 
 - One GitHub OAuth App for the whole administration interface and central MCP authority.
 - One MCP endpoint, `/mcp`. Client tokens select the permitted vaults; new shares require no new OAuth App.
-- A GUI for adding, removing and retargeting vault shares. Workers mount only their selected directory, read-only.
+- A GUI for adding, removing and retargeting vault shares. Workers mount only their selected directory. Write access is explicitly enabled per share and restricted to configured folders by both the gateway and worker.
 - A Pangolin-aware STDIO bridge. It sends both Pangolin access-token headers before the request reaches Pangolin and supplies an independently scoped app token.
 - Public prebuilt GHCR app and gateway images. Server updates pull images; no local Python/Docker rebuild is required.
 - Locked dependency hashes, pinned Actions/base images, tests and regular security scans.
@@ -97,7 +101,7 @@ python3 -m venv .venv
 
 The real-browser job additionally installs pinned Playwright's Chromium and runs `RUN_BROWSER_TESTS=1 python -m unittest tests.test_browser -v`. The container job builds the image and tests real app-to-worker reads through Nginx, revocation and read-only mounts. Neither is implied by a local unit-test pass.
 
-Visible UTF-8 Markdown only. Hidden paths, symlinks, special files, binary attachments and arbitrary commands are unavailable. Maximum 2 MiB per note, 500 lines per read and a bounded 5,000-note inventory. Search is literal and returns one match per note. Results indicate pagination/limits. PDFs, images and audio ingestion need explicit later implementations.
+Visible UTF-8 Markdown only. Writes are limited to enabled folders, use revision checks and save previous content in hidden `.mcp-history`. Moves preserve a source snapshot and report that backlinks need separate review. Hidden paths, symlinks, special files, binary attachments and arbitrary commands are unavailable. Maximum 2 MiB per note, 500 lines per read and a bounded 5,000-note inventory. Search is literal and returns one match per note. Results indicate pagination/limits. PDFs, images and audio ingestion need explicit later implementations.
 
 LoreMonkey transcripts can be imported as Markdown into a permitted campaign vault. The actual PC-to-server transfer is separate. Selected text is sent to OpenAI when used through ChatGPT. Recording and processing must be agreed with the group. An external memory vault is read on relevant requests; it does not automatically load every note into every chat.
 

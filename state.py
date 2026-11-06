@@ -10,6 +10,7 @@ import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
+from vault import write_paths
 
 NAME = re.compile(r"[a-z][a-z0-9-]{0,23}\Z")
 
@@ -41,6 +42,8 @@ class State:
             db.execute("CREATE TABLE IF NOT EXISTS config (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data TEXT NOT NULL)")
             db.execute("INSERT OR IGNORE INTO config VALUES (1, 0, ?)", (json.dumps({"vaults": []}),))
             db.execute("CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, digest TEXT UNIQUE NOT NULL, label TEXT NOT NULL, vault_ids TEXT NOT NULL, expires INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)")
+            if 'write_grants' not in {row['name'] for row in db.execute('PRAGMA table_info(clients)')}:
+                db.execute("ALTER TABLE clients ADD COLUMN write_grants TEXT NOT NULL DEFAULT '{}'")
         self.db.chmod(0o600)
 
     @contextmanager
@@ -91,7 +94,11 @@ class State:
             # must not silently grant access to replacement content.
             previous = old.get(name)
             identity = previous["id"] if previous and Path(previous["directory"]) == path else uuid.uuid4().hex
-            result.append({"id": identity, "name": name, "label": label, "directory": directory})
+            prefixes = item.get('write_paths', [])
+            if isinstance(prefixes, str):
+                prefixes = [line.strip() for line in prefixes.splitlines() if line.strip()]
+            result.append({"id": identity, "name": name, "label": label, "directory": directory,
+                           "write_paths": write_paths(prefixes)})
         return {"vaults": result}
 
     def save_config(self, config, expected_revision, write_deployment):
@@ -105,7 +112,7 @@ class State:
             db.execute("UPDATE config SET revision=?, data=? WHERE id=1", (revision + 1, json.dumps(config)))
         return revision + 1
 
-    def issue_client(self, label, vault_ids, days):
+    def issue_client(self, label, vault_ids, days, write_vault_ids=None):
         if not 1 <= days <= 90 or not label.strip() or len(label) > 100:
             raise ValueError("Client benötigt einen Namen und eine Laufzeit von 1 bis 90 Tagen")
         _, config = self.config()
@@ -113,13 +120,19 @@ class State:
         chosen = set(vault_ids)
         if not chosen or not chosen <= allowed:
             raise ValueError("Mindestens eine vorhandene Freigabe auswählen")
+        writable = set(write_vault_ids or [])
+        if not writable <= chosen:
+            raise ValueError('Schreibfreigaben benötigen auch Lesezugriff')
+        grants = {v['id']: v.get('write_paths', []) for v in config['vaults'] if v['id'] in writable}
+        if any(not paths for paths in grants.values()):
+            raise ValueError('Schreiben zuerst für die betreffende Vault-Freigabe aktivieren')
         raw = "omcp_" + secrets.token_urlsafe(32)
         identity = uuid.uuid4().hex
         expires = int(time.time()) + days * 86400
         digest = hashlib.sha256(raw.encode()).hexdigest()
         with self.connect() as db:
-            db.execute("INSERT INTO clients (id,digest,label,vault_ids,expires) VALUES (?,?,?,?,?)",
-                       (identity, digest, label, json.dumps(sorted(chosen)), expires))
+            db.execute("INSERT INTO clients (id,digest,label,vault_ids,expires,write_grants) VALUES (?,?,?,?,?,?)",
+                       (identity, digest, label, json.dumps(sorted(chosen)), expires, json.dumps(grants)))
         return raw, identity
 
     def verify_client(self, raw):
@@ -130,7 +143,8 @@ class State:
             row = db.execute("SELECT * FROM clients WHERE digest=? AND revoked=0 AND expires>?", (digest, int(time.time()))).fetchone()
         if not row:
             return None
-        return {"id": row["id"], "vault_ids": json.loads(row["vault_ids"]), "expires": row["expires"]}
+        return {"id": row["id"], "vault_ids": json.loads(row["vault_ids"]), "expires": row["expires"],
+                "write_grants": json.loads(row['write_grants'])}
 
     def clients(self):
         with self.connect() as db:

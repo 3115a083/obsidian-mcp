@@ -1,4 +1,4 @@
-"""Generate only explicit, read-only vault services for Compose's override file."""
+"""Generate explicit vault services with read-only defaults for Compose's override file."""
 import fcntl
 import json
 import os
@@ -12,8 +12,9 @@ def compose_override(config, state, revision):
             "image": "${MCP_IMAGE:?Set MCP_IMAGE}",
             "user": "${MCP_UID:-568}:${MCP_GID:-568}",
             "command": ["uvicorn", "worker:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers"],  # nosec B104 # Private internal Docker network; no published worker ports; deployment tests enforce this.
-            "environment": {"WORKER_TOKEN": state.derive("worker:" + vault["id"]), "VAULT_ROOT": "/vault", "HOME": "/tmp"},  # nosec B108 # HOME is a per-container tmpfs, not a predictable temporary file.
-            "volumes": [{"type": "bind", "source": vault["directory"].replace("$", "$$"), "target": "/vault", "read_only": True,
+            "environment": {"WORKER_TOKEN": state.derive("worker:" + vault["id"]), "VAULT_ROOT": "/vault", "HOME": "/tmp",
+                            "VAULT_WRITE_PATHS": json.dumps(vault.get('write_paths', [])).replace('$', '$$')},  # nosec B108 # HOME is a per-container tmpfs, not a predictable temporary file.
+            "volumes": [{"type": "bind", "source": vault["directory"].replace("$", "$$"), "target": "/vault", "read_only": not bool(vault.get('write_paths')),
                          "bind": {"create_host_path": False}}],
             "networks": ["backplane"], "read_only": True,
             "tmpfs": ["/tmp:rw,noexec,nosuid,size=32m"], "cap_drop": ["ALL"],  # nosec B108 # Declares the isolated tmpfs mount itself; no host temp-file API.

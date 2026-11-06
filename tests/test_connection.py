@@ -98,7 +98,7 @@ class DirectConnectionTests(unittest.TestCase):
                 json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
             self.assertEqual(legacy.status_code, 200)
 
-    def test_owner_authorization_and_readonly_tools_are_preserved(self):
+    def test_owner_authorization_and_tool_annotations_are_preserved(self):
         with self.client() as client:
             for owner in ('12345', '99999'):
                 access = AccessToken(token='synthetic', client_id='test', scopes=[], claims={'sub': owner})
@@ -108,8 +108,9 @@ class DirectConnectionTests(unittest.TestCase):
                     if owner != '12345':
                         continue
                     tools = response.json()['result']['tools']
-                    self.assertEqual({tool['name'] for tool in tools}, {'list_vaults', 'list_notes', 'read_note', 'search_notes'})
-                    self.assertTrue(all(tool['annotations']['readOnlyHint'] for tool in tools))
+                    self.assertEqual({tool['name'] for tool in tools}, {'list_vaults', 'list_notes', 'read_note', 'search_notes', 'list_note_versions', 'create_note', 'update_note', 'patch_note', 'move_note', 'restore_note'})
+                    self.assertEqual({tool['name'] for tool in tools if tool['annotations']['readOnlyHint']}, {'list_vaults', 'list_notes', 'read_note', 'search_notes', 'list_note_versions'})
+                    self.assertTrue(all(tool['annotations']['destructiveHint'] for tool in tools if not tool['annotations']['readOnlyHint']))
                     response = self.rpc(client, 'tools/call', 'synthetic', {'name': 'list_vaults', 'arguments': {}})
                     self.assertIn('Synthetic memory', response.text)
                     self.assertNotIn('/srv/', response.text)
@@ -122,6 +123,25 @@ class DirectConnectionTests(unittest.TestCase):
             self.assertEqual(client.post('/consent', data={'txn_id': 'forged', 'action': 'approve'}).status_code, 400)
             statuses = [self.register(client).status_code for _ in range(10)]
             self.assertIn(429, statuses)
+
+    def test_owner_write_access_uses_current_policy_on_both_ingresses(self):
+        revision, config = self.store.config()
+        config['vaults'][0]['write_paths'] = ['Project']
+        self.store.save_config(config, revision, lambda *_: None)
+        calls = []
+
+        def reply(request):
+            calls.append(request)
+            return httpx2.Response(200, json={'path': 'Project/A.md', 'revision': 'synthetic'})
+        self.app = create_app(self.settings, state=self.store, oauth_transport=github_transport(),
+                              worker_transport=httpx2.MockTransport(reply))
+        access = AccessToken(token='synthetic', client_id='test', scopes=[], claims={'sub': '12345'})
+        with self.client() as client, patch.object(GitHubProvider, 'load_access_token', AsyncMock(return_value=access)):
+            for path, permitted in [('Project/A.md', True), ('Project-other/A.md', False), ('Other/A.md', False)]:
+                result = self.rpc(client, 'tools/call', 'synthetic', {'name': 'create_note',
+                    'arguments': {'vault': 'memory', 'path': path, 'content': 'synthetic event'}})
+                self.assertEqual(bool(result.json()['result'].get('isError')), not permitted)
+            self.assertEqual(len(calls), 1)
 
     def test_full_oauth_pkce_consent_and_code_replay(self):
         from fastmcp.server.auth.providers import github
@@ -227,9 +247,9 @@ class GuardTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             guard = DirectAccessGuard(app, secret=SECRET, state_dir=directory, max_state_bytes=32)
             self.assertEqual(await self.request(guard), 204)
-            for lengths, status in (([b'-1'], 400), ([b'bad'], 400), ([b'1', b'1'], 400), ([b'65537'], 413)):
+            for lengths, status in (([b'-1'], 400), ([b'bad'], 400), ([b'1', b'1'], 400), ([b'8388609'], 413)):
                 self.assertEqual(await self.request(guard, headers=[(b'content-length', value) for value in lengths]), status)
-            self.assertEqual(await self.request(guard, chunks=[{'type': 'http.request', 'body': b'x' * 65537}]), 413)
+            self.assertEqual(await self.request(guard, chunks=[{'type': 'http.request', 'body': b'x' * (8 * 1024 * 1024 + 1)}]), 413)
             guard.active = 8
             self.assertEqual(await self.request(guard), 503)
             guard.active = 0

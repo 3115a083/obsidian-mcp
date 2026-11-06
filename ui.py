@@ -92,7 +92,10 @@ def vault_row(item, parent):
         full = ' class="full"' if key == "directory" else ""
         # Validate on the server so invalid drafts remain visible and editable.
         out += f'<label{full}>{label}<input name="vault_{key}" value="{esc(item.get(key, ""))}" placeholder="{esc(placeholder)}" autocomplete="off"></label>'
-    return out + '</div><div class="actions"><button type="button" class="secondary danger" data-remove>Freigabe entfernen</button><small>Eigener Container. Nur Lesen und Suchen.</small></div></section>'
+    prefixes = item.get('write_paths', [])
+    raw = prefixes if isinstance(prefixes, str) else '\n'.join(prefixes)
+    out += '<label class="full">Erlaubte Schreibordner<textarea name="vault_write_paths" rows="3" spellcheck="false" placeholder="Leer lassen für Lesezugriff">' + esc(raw) + '</textarea></label>'
+    return out + '</div><small>Ein relativer Ordner pro Zeile, ohne abschließenden Schrägstrich. / erlaubt den gesamten Vault. Leer bedeutet nur lesen. Nach dem Speichern die Konfiguration anwenden. Änderungen und Verschiebungen erhalten vorherige Fassungen im Vault-Ordner .mcp-history.</small><div class="actions"><button type="button" class="secondary danger" data-remove>Freigabe entfernen</button></div></section>'
 
 
 def dashboard(settings, state, csrf, notice="", status=200, draft=None, revision=None, raw_token=None, client_draft=None):
@@ -116,16 +119,19 @@ def dashboard(settings, state, csrf, notice="", status=200, draft=None, revision
     out += '<section class="panel"><h2>Gespeicherte Konfiguration anwenden</h2><p>Erst speichern. Dann auf dem TrueNAS-Host per SSH in das Dockge-Stack-Verzeichnis wechseln, das <code>compose.yaml</code>, <code>compose.override.yaml</code> und <code>.env</code> enthält. Dort diesen Befehl ausführen:</p><label for="apply-command">Befehl für die TrueNAS-Shell</label><textarea id="apply-command" readonly rows="5" spellcheck="false">' + esc(APPLY_COMMAND) + '</textarea><div class="actions"><button type="button" id="copy-apply">Befehl kopieren</button></div><p id="copy-status" role="status" aria-live="polite"></p><small>Prüft die Compose-Konfiguration und startet oder aktualisiert die Dienste. Entfernt verwaiste Dienste dieses Compose-Projekts, auch entfernte Vault-Worker. Verwende denselben Projektnamen wie Dockge. Ungespeicherte Eingaben bleiben hier erhalten. Kein Image-Update, kein Docker-Socket und keine Befehlsausführung durch die App. Alternativ in Dockge neu einlesen und deployen.</small></section>'
     out += '<section class="panel"><h2>Pangolin sicher einrichten</h2><ol><li>HTTPS-Ressource zur Newt-Site anlegen. Bei Newt im Host-Netz und unverändertem Gateway-Port als Ziel <code>http://127.0.0.1:3061</code> verwenden. Den ganzen Host weiterleiten, keine Pfad-Präfixe entfernen.</li><li>Pangolin-Anmeldung aktiviert lassen. Die Verwaltung unter <code>/admin/</code> verlangt danach zusätzlich den freigegebenen GitHub-Account.</li><li>Für die Bridge in der Ressource einen befristeten Link mit Zugangstoken erstellen. Lokal als <code>PANGOLIN_TOKEN_ID</code> und <code>PANGOLIN_ACCESS_TOKEN</code> hinterlegen. Die Bridge sendet <code>P-Access-Token-Id</code> und <code>P-Access-Token</code>.</li><li>Hier einen auf die benötigten Vaults begrenzten Client-Token erstellen und separat als <code>MCP_CLIENT_TOKEN</code> in der Bridge hinterlegen. Keine Tokens in URLs, Git oder Chat kopieren.</li></ol><details><summary>Warum kein Auth-Bypass für /mcp/?</summary><p>Der Endpunkt lautet <code>/mcp</code>. Eine Pangolin-Regel „Bypass Auth“ entfernt dort die äußere Authentifizierung. Die App verlangt weiterhin einen gültigen MCP-Token; eine Browser-Sitzung genügt nicht. Eine Ausnahme nur für <code>/mcp/</code> ist außerdem keine vollständige OAuth-Einrichtung, da Discovery und OAuth eigene Pfade nutzen. Für diese Installation bleibt Pangolin auch vor MCP aktiv. Die Header-Bridge ermöglicht Zugriff ohne interaktive Pangolin-Anmeldung. Keine pauschalen Ausnahmen für <code>/*</code>, <code>/admin</code> oder <code>/auth</code> einrichten.</p></details><p><a href="https://docs.pangolin.net/manage/access-control/links" target="_blank" rel="noopener noreferrer">Pangolin: Zugangstoken und Header</a></p></section>'
     _, saved = state.config()
-    client_draft = client_draft or {"label": "", "days": "30", "vault_ids": []}
+    client_draft = client_draft or {"label": "", "days": "30", "vault_ids": [], "write_vault_ids": []}
     out += '<section class="panel"><h2>Client-Zugriff begrenzen</h2><p>Ein eigener Zugriffstoken pro Verbindung. Nur die ausgewählten Freigaben sind damit erreichbar. Neue oder ersetzte Vaults werden nicht automatisch freigegeben.</p><form method="post" action="/admin/clients">' + token
     out += '<div class="grid"><label>Client-Name<input name="client_label" maxlength="100" value="' + esc(client_draft['label']) + '" placeholder="Zum Beispiel D&D-Assistent"></label><label>Gültigkeit in Tagen<input name="days" inputmode="numeric" value="' + esc(client_draft['days']) + '"></label></div>'
     for vault in saved['vaults']:
         out += '<p><label><input type="checkbox" name="vault_id" value="' + esc(vault['id']) + '"' + (' checked' if vault['id'] in client_draft['vault_ids'] else '') + '>' + esc(vault['label']) + '</label></p>'
+    for vault in saved['vaults']:
+        if vault.get('write_paths'):
+            out += '<p><label><input type="checkbox" name="write_vault_id" value="' + esc(vault['id']) + '"' + (' checked' if vault['id'] in client_draft.get('write_vault_ids', []) else '') + '>Zusätzlich schreiben: ' + esc(vault['label']) + '</label></p>'
     out += '<div class="actions"><button>Zugriffstoken erstellen</button></div></form>'
     for client in state.clients():
         out += '<div class="client"><span>' + esc(client['label']) + (' · widerrufen' if client['revoked'] else ' · Ablauf: ' + str(client['expires'])) + '</span>'
         if not client['revoked']:
             out += '<form method="post" action="/admin/revoke">' + token + '<input type="hidden" name="client_id" value="' + esc(client['id']) + '"><button class="secondary danger">Widerrufen</button></form>'
         out += '</div>'
-    out += '</section><p class="muted">Version 2.1.0 · Revision ' + str(current_revision) + ' · <a href="/admin/deployment">Erzeugte Konfiguration prüfen</a></p>'
+    out += '</section><p class="muted">Version 2.2.0 · Revision ' + str(current_revision) + ' · <a href="/admin/deployment">Erzeugte Konfiguration prüfen</a></p>'
     return document(out, status=status, script=JS)

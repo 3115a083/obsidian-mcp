@@ -26,4 +26,4 @@ class ClientTokenVerifier(TokenVerifier):
             return None
         return AccessToken(token=token, client_id=record["id"], scopes=[],
                            expires_at=record["expires"], subject=record["id"],
-                           claims={"vault_ids": record["vault_ids"]})
+                           claims={"vault_ids": record["vault_ids"], "write_grants": record['write_grants']})
