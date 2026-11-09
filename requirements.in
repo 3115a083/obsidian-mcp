@@ -1,5 +1,5 @@
 fastmcp==4.1.5
-Authlib==1.9.2
+Authlib==1.9.5
 cryptography==50.0.2
 httpx2==2.16.0
 itsdangerous==2.2.0

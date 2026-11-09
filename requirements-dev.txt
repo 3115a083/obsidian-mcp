@@ -26,9 +26,9 @@ attrs==26.1.0 \
     #   jsonschema
     #   jsonschema-path
     #   referencing
-authlib==1.9.2 \
-    --hash=sha256:4a39f59fa7b94160859cc447514caf199e133b7ca64a351fb4065bf5006d5a40 \
-    --hash=sha256:83271024b7d3b9992f0d928abd87c5f6e89cfb5aaada294972b860aa807ddafc
+authlib==1.9.5 \
+    --hash=sha256:3f031d5e9b6486089e91e8f7f1b68f36275f3151c66460d650fc90d420545fd7 \
+    --hash=sha256:e32a63e3d869196b61816b2602231862179a2ffc29358c009d1f022c8b86a8b2
     # via
     #   -r requirements.in
     #   fastmcp-slim
@@ -39,15 +39,19 @@ bandit==1.9.4 \
 beartype==0.23.1 \
     --hash=sha256:4461b4dc57e3fdd6c8a8464b22cf118002eea107c33e9fef651c69068ab3cce3 \
     --hash=sha256:8b805f246b32931c74f2b321ea0939fe5bb2ff43c12a3eff19cc4c854b832e1d
-    # via py-key-value-aio
+    # via
+    #   fastmcp-slim
+    #   py-key-value-aio
 boolean-py==5.0 \
     --hash=sha256:60cbc4bad079753721d32649545505362c754e121570ada4658b852a3a318d95 \
     --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
     # via license-expression
-cachecontrol==0.14.4 \
+cachecontrol[filecache]==0.14.4 \
     --hash=sha256:b7ac014ff72ee199b5f8af1de29d60239954f223e948196fa3d84adaffc71d2b \
     --hash=sha256:e6220afafa4c22a47dd0badb319f84475d79108100d04e26e8542ef7d3ab05a1
-    # via pip-audit
+    # via
+    #   cachecontrol
+    #   pip-audit
 cachetools==7.2.8 \
     --hash=sha256:09b04a85741d0019b3fb7d02b7ee9933a422fa6923af92a0fd63b893b695830c \
     --hash=sha256:3f9b146b2160975da273e7c23ec882f3996b65df608150d52083c07de0682075
@@ -480,7 +484,7 @@ fastmcp==4.1.5 \
     --hash=sha256:0167d63b2a0a3ff34d44d84002e3cf9ea4cf41c0fa8e9f4a3c0651204da427fc \
     --hash=sha256:90bd205f19480451771593099b2c8fa456f142741809927a12607a0f39b2a30a
     # via -r requirements.in
-fastmcp-slim==4.1.5 \
+fastmcp-slim[client,server]==4.1.5 \
     --hash=sha256:4bf9afa09f76dd89b96f8bf8f971b8a1b33cfda371fa693f52ef6219a1adcee1 \
     --hash=sha256:63baf382bdd35a423ee4ec15a4ec166716f5029a211df0d4748555a62fd1d1b2
     # via fastmcp
@@ -764,10 +768,6 @@ pathable==0.6.0 \
     --hash=sha256:6404b8b82aef5ff0fd478934137128b99b12212ba35afdde5525ca4f8388ea58 \
     --hash=sha256:82c4ca6c98c502ad12e0d4e9779b6210afee93c38990988c8c5d1b49bdcdf566
     # via jsonschema-path
-pip==26.2.2 \
-    --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f \
-    --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70
-    # via pip-api
 pip-api==0.0.35 \
     --hash=sha256:14dea05d7b3b68f4c7582213e3ae8932bbba8e1f754bf06b95263d5fa6ab4363 \
     --hash=sha256:66990d0da25378555cbb538db79384bab92d4617c6350dfd7a2126ba2a3a9894
@@ -796,7 +796,7 @@ playwright==1.64.1 \
     --hash=sha256:a29fda44725e11b0b625c4bff6458a1f6dbee97b88c9788d12e18a8344458c2d \
     --hash=sha256:d3c48b31da426c2f3562d0919cb9ea4e5415f6dbd29d7211fa4d66cca24fbd2f
     # via -r requirements-dev.in
-py-key-value-aio==0.4.6 \
+py-key-value-aio[filetree,memory]==0.4.6 \
     --hash=sha256:267c03c3e24cb99d3097612f8a5cfd8e11785c6a2975e272db0e303ea1850bfd \
     --hash=sha256:820b30c7959fc738ea3d00160cdb10cd258f51e38737b2add530defeea1ded77
     # via fastmcp-slim
@@ -808,7 +808,7 @@ pycparser==3.12 \
     --hash=sha256:a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e \
     --hash=sha256:f03387877eab82ce01bbdfd0ba7252ee55a90b1c708d5129e2ce915475cf1db6
     # via cffi
-pydantic==2.14.2 \
+pydantic[email]==2.14.2 \
     --hash=sha256:7efbf7507b937931cd32a5755acb00ea1cf5ccb1d4e8067a5850d5069e382118 \
     --hash=sha256:fb7b2db6cefe8414dd612edeede49c4c433acb0432b0f92b95024e45f66c505d
     # via
@@ -974,7 +974,7 @@ pygments==2.21.0 \
     # via
     #   rich
     #   rich-rst
-pyjwt==2.15.1 \
+pyjwt[crypto]==2.15.1 \
     --hash=sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193 \
     --hash=sha256:4f259e80cdfb6b3fc18a7de51fd1ef9ec79652f25019bae68975ca2468a34df8
     # via mcp
@@ -1334,11 +1334,7 @@ typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
     --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
-    #   anyio
-    #   cyclonedx-python-lib
-    #   exceptiongroup
     #   fastmcp-slim
-    #   httpx2
     #   mcp
     #   mcp-types
     #   opentelemetry-api
@@ -1347,8 +1343,6 @@ typing-extensions==4.16.0 \
     #   pydantic-core
     #   pydantic-settings
     #   pyee
-    #   referencing
-    #   starlette
     #   typing-inspection
 typing-inspection==0.4.4 \
     --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
