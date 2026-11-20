@@ -5,6 +5,7 @@ LABEL org.opencontainers.image.source="https://github.com/3115a083/obsidian-mcp"
       org.opencontainers.image.revision=$BUILD_REVISION
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp BUILD_REVISION=$BUILD_REVISION
 WORKDIR /app
+RUN apk upgrade --no-cache
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 COPY app.py auth.py bridge.py connection.py deployment.py settings.py state.py ui.py vault.py web.py worker.py ./
