@@ -12,7 +12,7 @@ USER 568:568
 EXPOSE 8000
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers"]
 
-FROM nginx:stable-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949 AS gateway
+FROM nginx:stable-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3 AS gateway
 ARG BUILD_REVISION=development
 LABEL org.opencontainers.image.source="https://github.com/3115a083/obsidian-mcp" \
       org.opencontainers.image.revision=$BUILD_REVISION
